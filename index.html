@@ -3350,17 +3350,10 @@
             customer: cust
           };
           saveUsers(users);
-          // Definir usuário atual e preencher dados globais
-          localStorage.setItem('palatarius_current_user', username);
-          customer = JSON.parse(JSON.stringify(cust));
-          // Limpar carrinho e observações para novo cadastro
-          cart = [];
-          cartObservations = '';
-          saveToStorage();
-          renderCategories();
-          renderProducts();
-          updateCartBadge();
-          showScreen('menu-screen');
+           // Não fazer login automático após cadastro.
+           // Apenas salva o usuário e solicita que faça login para continuar.
+           alert('Cadastro concluído! Faça login para continuar.');
+           showScreen('login-screen');
         });
       }
 
