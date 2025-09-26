@@ -611,6 +611,10 @@
     <div class="search-group" style="margin-bottom: 1rem;">
       <input type="text" id="search-input" placeholder="Buscar item..." />
     </div>
+    <!-- Botão de sair para voltar à tela de login -->
+    <div class="logout-group" style="margin-bottom: 1rem; text-align: right;">
+      <button class="btn btn-secondary" id="logout-btn">Sair</button>
+    </div>
     <nav class="category-nav" id="category-nav"></nav>
     <div id="product-list"></div>
   </section>
@@ -3350,10 +3354,17 @@
             customer: cust
           };
           saveUsers(users);
-           // Não fazer login automático após cadastro.
-           // Apenas salva o usuário e solicita que faça login para continuar.
-           alert('Cadastro concluído! Faça login para continuar.');
-           showScreen('login-screen');
+          // Definir usuário atual e preencher dados globais
+          localStorage.setItem('palatarius_current_user', username);
+          customer = JSON.parse(JSON.stringify(cust));
+          // Limpar carrinho e observações para novo cadastro
+          cart = [];
+          cartObservations = '';
+          saveToStorage();
+          renderCategories();
+          renderProducts();
+          updateCartBadge();
+          showScreen('menu-screen');
         });
       }
 
@@ -3448,6 +3459,23 @@
       if (backToMenuBtn) {
         backToMenuBtn.addEventListener('click', () => {
           showScreen('menu-screen');
+        });
+      }
+
+      // Botão de sair do cardápio para retornar à tela de login
+      const logoutBtn = document.getElementById('logout-btn');
+      if (logoutBtn) {
+        logoutBtn.addEventListener('click', () => {
+          // Remover usuário atual do armazenamento
+          localStorage.removeItem('palatarius_current_user');
+          // Limpar dados do cliente e carrinho
+          customer = {};
+          cart = [];
+          cartObservations = '';
+          saveToStorage();
+          updateCartBadge();
+          // Voltar para a tela de login
+          showScreen('login-screen');
         });
       }
     });
