@@ -1,0 +1,3463 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Palatarius – Cardápio Digital</title>
+  <!--
+    Este arquivo implementa um cardápio digital completo para o restaurante
+    Palatarius. Ele foi projetado para funcionar totalmente offline, sem
+    dependências externas. Todo o estilo (CSS) e scripts (JS) estão
+    incorporados neste documento. A interface segue um tema escuro com
+    detalhes em vermelho, amarelo e branco conforme definido pelo cliente.
+
+    As imagens dos itens são incorporadas via Data URI (Base64) quando
+    disponíveis. Para itens sem imagem fornecida, um placeholder é exibido
+    com fundo escuro, um emoji representativo e o texto “Foto em breve”.
+
+    Este cardápio foi pensado para uso mobile‑first, utilizando uma
+    tipografia grande e botões “touch‑friendly” (mínimo de 44px de
+    altura/largura). Os dados do cliente e o carrinho são persistidos
+    localmente via localStorage para permitir que o usuário retorne ao
+    cardápio sem perder o progresso.
+  -->
+  <style>
+    /* Paleta de cores do tema */
+    :root {
+      --bg-base: #0B0B0F;
+      --primary-red: #E53935;
+      --primary-yellow: #FFD60A;
+      --primary-white: #FFFFFF;
+      --gray-dark: #151515;
+      --gray-medium: #232323;
+      --gray-light: #BDBDBD;
+      --radius-card: 16px;
+      --radius-input: 8px;
+      --shadow: 0 4px 8px rgba(0,0,0,0.3);
+      --font-size-base: 1rem;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      margin: 0;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen,
+        Ubuntu, Cantarell, "Open Sans", "Helvetica Neue", sans-serif;
+      color: var(--primary-white);
+      background: var(--bg-base);
+      overflow-x: hidden;
+    }
+    a {
+      color: inherit;
+      text-decoration: none;
+    }
+    h1, h2, h3 {
+      margin: 0;
+      font-weight: 600;
+    }
+    h1 { font-size: 2rem; }
+    h2 { font-size: 1.5rem; }
+    h3 { font-size: 1.2rem; }
+    p { margin: 0.2rem 0; }
+
+    /* Cabeçalho */
+    header {
+      padding: 1rem;
+      text-align: center;
+      background-color: var(--gray-dark);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      box-shadow: var(--shadow);
+    }
+    header h1 {
+      color: var(--primary-yellow);
+      font-size: 1.8rem;
+    }
+
+    /* Conteúdo principal dividido em telas */
+    section {
+      display: none;
+      padding: 1rem;
+    }
+    section.active {
+      display: block;
+    }
+
+    /* Formulário de dados do cliente */
+    .form-group {
+      margin-bottom: 1rem;
+    }
+    label {
+      display: block;
+      margin-bottom: 0.3rem;
+      color: var(--primary-white);
+      font-weight: 500;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 0.6rem;
+      border-radius: var(--radius-input);
+      border: none;
+      /* Para os campos de edição ficarem visíveis sobre o fundo escuro,
+         use um tom médio de cinza que contraste com o fundo mais escuro */
+      background-color: var(--gray-medium);
+      color: var(--primary-white);
+      font-size: 1rem;
+      /* contorno suave para melhor distinção */
+      box-shadow: inset 0 0 0 1px var(--gray-light);
+    }
+    input:focus, select:focus, textarea:focus {
+      outline: 2px solid var(--primary-red);
+    }
+    .row {
+      display: flex;
+      gap: 0.5rem;
+    }
+    .row .form-group {
+      flex: 1;
+    }
+
+    /* Botões */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 44px;
+      padding: 0.6rem 1rem;
+      border: none;
+      border-radius: var(--radius-input);
+      font-size: 1rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.2s;
+    }
+    .btn-primary {
+      background-color: var(--primary-red);
+      color: var(--primary-white);
+    }
+    .btn-primary:hover {
+      background-color: #c62828;
+    }
+    .btn-secondary {
+      background-color: var(--primary-yellow);
+      color: var(--bg-base);
+    }
+    .btn-secondary:hover {
+      background-color: #e6c50a;
+    }
+    .btn-small {
+      font-size: 0.9rem;
+      padding: 0.4rem 0.6rem;
+      min-height: 36px;
+    }
+
+    /* Navegação de categorias */
+    .category-nav {
+      display: flex;
+      overflow-x: auto;
+      margin-bottom: 1rem;
+      gap: 0.5rem;
+    }
+    .category-nav button {
+      flex: 1 0 auto;
+      white-space: nowrap;
+      padding: 0.6rem 1rem;
+      border-radius: var(--radius-input);
+      border: none;
+      background-color: var(--gray-dark);
+      color: var(--primary-white);
+      font-weight: 600;
+      cursor: pointer;
+      min-height: 44px;
+    }
+    .category-nav button.active {
+      background-color: var(--primary-red);
+      color: var(--primary-white);
+    }
+
+    /* Cards de produtos */
+    .product-card {
+      background-color: var(--gray-dark);
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow);
+      margin-bottom: 1rem;
+      overflow: hidden;
+      display: flex;
+      flex-direction: column;
+    }
+    .product-image {
+      position: relative;
+      width: 100%;
+      /* mantenha a proporção 4/3 */
+      aspect-ratio: 4 / 3;
+      background-color: var(--gray-medium);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--gray-light);
+      font-size: 2rem;
+    }
+    .product-image img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-top-left-radius: var(--radius-card);
+      border-top-right-radius: var(--radius-card);
+    }
+    .product-content {
+      padding: 0.8rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+    .product-title {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: var(--primary-yellow);
+    }
+    .product-desc {
+      font-size: 0.9rem;
+      color: var(--gray-light);
+    }
+    .product-price {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--primary-yellow);
+    }
+    .product-actions {
+      margin-top: auto;
+      display: flex;
+      justify-content: flex-end;
+    }
+    .product-actions button {
+      margin-left: auto;
+    }
+
+    /* Badge do carrinho flutuante */
+    .cart-badge {
+      position: fixed;
+      bottom: 1.5rem;
+      right: 1.5rem;
+      background-color: var(--primary-red);
+      color: var(--primary-white);
+      padding: 0.6rem 1rem;
+      border-radius: 50px;
+      box-shadow: var(--shadow);
+      font-weight: 600;
+      cursor: pointer;
+      z-index: 1000;
+    }
+    .cart-badge span {
+      margin-left: 0.4rem;
+      font-weight: 700;
+    }
+
+    /* Tela de carrinho */
+    .cart-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.6rem;
+      margin-bottom: 1rem;
+      background-color: var(--gray-dark);
+      border-radius: var(--radius-card);
+      padding: 0.6rem;
+      box-shadow: var(--shadow);
+    }
+    .cart-item img {
+      width: 64px;
+      height: 64px;
+      object-fit: cover;
+      border-radius: 8px;
+    }
+    .cart-item-details {
+      flex: 1;
+    }
+    .cart-item-title {
+      font-weight: 600;
+      color: var(--primary-yellow);
+    }
+    .cart-item-options {
+      font-size: 0.85rem;
+      color: var(--gray-light);
+      margin-top: 0.2rem;
+    }
+    .cart-item-actions {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+    .quantity-control {
+      display: flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    .quantity-control button {
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 50%;
+      border: none;
+      background-color: var(--primary-yellow);
+      color: var(--bg-base);
+      font-weight: 700;
+      cursor: pointer;
+    }
+    .cart-totals {
+      margin-top: 1rem;
+      background-color: var(--gray-dark);
+      padding: 1rem;
+      border-radius: var(--radius-card);
+      box-shadow: var(--shadow);
+    }
+    .cart-totals div {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+      font-size: 1rem;
+    }
+    .cart-totals div.total {
+      font-weight: 700;
+      color: var(--primary-yellow);
+    }
+
+    /* Modal de montagem */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 2000;
+    }
+    .modal-overlay.active {
+      display: flex;
+    }
+    .modal {
+      background-color: var(--gray-medium);
+      color: var(--primary-white);
+      border-radius: var(--radius-card);
+      padding: 1rem;
+      width: 90%;
+      max-width: 480px;
+      max-height: 90vh;
+      overflow-y: auto;
+      box-shadow: var(--shadow);
+    }
+    .modal h2 {
+      margin-bottom: 0.8rem;
+      color: var(--primary-yellow);
+    }
+    .modal-section {
+      margin-bottom: 1rem;
+    }
+    .modal-section label {
+      font-size: 0.95rem;
+      margin-bottom: 0.2rem;
+    }
+    .modal-section .options {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+    .option-item {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      padding: 0.4rem 0.6rem;
+      border-radius: var(--radius-input);
+      background-color: var(--gray-dark);
+      cursor: pointer;
+      font-size: 0.9rem;
+    }
+    .option-item input {
+      margin-right: 0.3rem;
+    }
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+    .modal-actions button {
+      flex: 1;
+    }
+
+    /* Mensagens de erro */
+    .error {
+      color: var(--primary-red);
+      font-size: 0.85rem;
+      margin-top: 0.3rem;
+    }
+
+    /* Responsividade para telas maiores */
+    @media (min-width: 768px) {
+      .product-card {
+        flex-direction: row;
+      }
+      .product-image {
+        width: 40%;
+        height: auto;
+      }
+      .product-content {
+        width: 60%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Palatarius</h1>
+    <!-- O botão do editor não é exibido publicamente. Uma
+         pequena área de administração será acessível a partir da tela
+         de login mediante senha. O botão é mantido no DOM, mas
+         escondido com CSS e ativado apenas via link interno. -->
+    <button id="open-editor" class="btn btn-secondary btn-small" style="display:none; position:absolute; top:0.8rem; right:1rem;">
+      ⚙️ Editor
+    </button>
+  </header>
+
+  <!-- Tela de Login: exibe campos para usuário e senha. Inclui links para
+       cadastro e área de edição. Esta tela é exibida por padrão para
+       visitantes que ainda não efetuaram login. -->
+  <section id="login-screen" class="active">
+    <h2>Entrar</h2>
+    <form id="login-form">
+      <div class="form-group">
+        <label for="login-username">Usuário</label>
+        <input type="text" id="login-username" required placeholder="Nome de usuário" />
+      </div>
+      <div class="form-group">
+        <label for="login-password">Senha</label>
+        <input type="password" id="login-password" required placeholder="Senha" />
+      </div>
+      <button type="submit" class="btn btn-primary">Entrar</button>
+    </form>
+    <p style="margin-top:1rem;">
+      <a href="#" id="show-register">Cadastre-se</a>
+    </p>
+    <p>
+      <a href="#" id="login-editor-link">Área do Editor</a>
+    </p>
+  </section>
+
+  <!-- Tela de Registro: permite ao novo cliente criar um usuário e preencher seus
+       dados (nome, telefone, endereço, etc.). Após o cadastro, o usuário
+       é redirecionado diretamente para o cardápio. -->
+  <section id="register-screen">
+    <h2>Cadastro</h2>
+    <form id="register-form">
+      <!-- Campos de login -->
+      <div class="form-group">
+        <label for="reg-username">Usuário *</label>
+        <input type="text" id="reg-username" required placeholder="Crie seu usuário" />
+      </div>
+      <div class="form-group">
+        <label for="reg-password">Senha *</label>
+        <input type="password" id="reg-password" required placeholder="Crie uma senha" />
+      </div>
+      <!-- Campos de dados do cliente reutilizados do formulário original -->
+      <div class="form-group">
+        <label for="reg-name">Nome completo *</label>
+        <input type="text" id="reg-name" required placeholder="Digite seu nome completo" />
+        <div class="error" id="error-reg-name"></div>
+      </div>
+      <div class="form-group">
+        <label for="reg-phone">Telefone (somente números) *</label>
+        <input type="tel" id="reg-phone" required placeholder="(21) 99999-9999" pattern="\d{10,11}" />
+        <div class="error" id="error-reg-phone"></div>
+      </div>
+      <div class="form-group">
+        <label for="reg-order-type">Tipo de pedido *</label>
+        <select id="reg-order-type" required>
+          <option value="Entrega">Entrega</option>
+          <option value="Retirada">Retirada no balcão</option>
+        </select>
+      </div>
+      <!-- Campos de entrega -->
+      <div id="reg-delivery-fields" style="display:none;">
+        <div class="form-group">
+          <label for="reg-logradouro">Logradouro *</label>
+          <input type="text" id="reg-logradouro" placeholder="Rua/Avenida" />
+          <div class="error" id="error-reg-logradouro"></div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label for="reg-number">Número *</label>
+            <input type="text" id="reg-number" placeholder="Número" />
+            <div class="error" id="error-reg-number"></div>
+          </div>
+          <div class="form-group">
+            <label for="reg-complement">Complemento</label>
+            <input type="text" id="reg-complement" placeholder="Apto, bloco..." />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="reg-bairro">Bairro *</label>
+          <input type="text" id="reg-bairro" placeholder="Bairro" />
+          <div class="error" id="error-reg-bairro"></div>
+        </div>
+        <div class="form-group">
+          <label for="reg-marco">Marco</label>
+          <input type="text" id="reg-marco" placeholder="Ponto de referência" />
+        </div>
+        <div class="form-group">
+          <label for="reg-cidade">Cidade</label>
+          <input type="text" id="reg-cidade" value="Seropédica-RJ" readonly />
+        </div>
+        <div class="form-group">
+          <label for="reg-km">KM *</label>
+          <select id="reg-km">
+            <option value="39">KM 39</option>
+            <option value="40">KM 40</option>
+            <option value="41">KM 41</option>
+            <option value="42">KM 42</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div class="form-group" id="reg-uber-freight-group" style="display:none;">
+          <label for="reg-uber-freight">Frete via Uber Moto Flash (R$) *</label>
+          <input type="number" id="reg-uber-freight" min="0" step="0.01" placeholder="Digite o valor" />
+          <div class="error" id="error-reg-freight"></div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" id="register-submit">Concluir Cadastro</button>
+      <button type="button" class="btn btn-secondary" id="register-cancel">Cancelar</button>
+    </form>
+  </section>
+
+  <!-- Tela de dados do cliente (não utilizada inicialmente). Permanecemos
+       com esta tela no documento para eventual edição de dados, mas ela
+       não é exibida por padrão. -->
+  <section id="customer-screen">
+    <h2>Dados do Cliente</h2>
+    <form id="customer-form">
+      <div class="form-group">
+        <label for="customer-name">Nome completo *</label>
+        <input type="text" id="customer-name" name="customer-name" required placeholder="Digite seu nome completo" />
+        <div class="error" id="error-name"></div>
+      </div>
+      <div class="form-group">
+        <label for="customer-phone">Telefone (somente números) *</label>
+        <input type="tel" id="customer-phone" name="customer-phone" required placeholder="(21) 99999-9999" pattern="\d{10,11}" />
+        <div class="error" id="error-phone"></div>
+      </div>
+      <div class="form-group">
+        <label for="order-type">Tipo de pedido *</label>
+        <select id="order-type" name="order-type" required>
+          <option value="Entrega">Entrega</option>
+          <option value="Retirada">Retirada no balcão</option>
+        </select>
+      </div>
+      <!-- Campos de entrega -->
+      <div id="delivery-fields" style="display:none;">
+        <div class="form-group">
+          <label for="address-logradouro">Logradouro *</label>
+          <input type="text" id="address-logradouro" placeholder="Rua/Avenida" />
+          <div class="error" id="error-logradouro"></div>
+        </div>
+        <div class="row">
+          <div class="form-group">
+            <label for="address-number">Número *</label>
+            <input type="text" id="address-number" placeholder="Número" />
+            <div class="error" id="error-number"></div>
+          </div>
+          <div class="form-group">
+            <label for="address-complement">Complemento</label>
+            <input type="text" id="address-complement" placeholder="Apto, bloco..." />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="address-bairro">Bairro *</label>
+          <input type="text" id="address-bairro" placeholder="Bairro" />
+          <div class="error" id="error-bairro"></div>
+        </div>
+        <div class="form-group">
+          <label for="address-marco">Marco</label>
+          <input type="text" id="address-marco" placeholder="Ponto de referência" />
+        </div>
+        <div class="form-group">
+          <label for="address-cidade">Cidade</label>
+          <input type="text" id="address-cidade" value="Seropédica-RJ" readonly />
+        </div>
+        <div class="form-group">
+          <label for="address-km">KM *</label>
+          <select id="address-km">
+            <option value="39">KM 39</option>
+            <option value="40">KM 40</option>
+            <option value="41">KM 41</option>
+            <option value="42">KM 42</option>
+            <option value="Outro">Outro</option>
+          </select>
+        </div>
+        <div class="form-group" id="uber-freight-group" style="display:none;">
+          <label for="uber-freight">Frete via Uber Moto Flash (R$) *</label>
+          <input type="number" id="uber-freight" min="0" step="0.01" placeholder="Digite o valor" />
+          <div class="error" id="error-freight"></div>
+        </div>
+      </div>
+      <button type="submit" class="btn btn-primary" id="continue-menu">Continuar para o Cardápio</button>
+    </form>
+  </section>
+
+  <!-- Tela 2: Cardápio -->
+  <section id="menu-screen">
+    <div class="search-group" style="margin-bottom: 1rem;">
+      <input type="text" id="search-input" placeholder="Buscar item..." />
+    </div>
+    <nav class="category-nav" id="category-nav"></nav>
+    <div id="product-list"></div>
+  </section>
+
+  <!-- Tela 3: Carrinho -->
+  <section id="cart-screen">
+    <h2>Seu Carrinho</h2>
+    <!-- Botão para voltar ao cardápio e continuar comprando -->
+    <button class="btn btn-secondary" id="back-to-menu" style="margin-bottom:1rem;">Voltar ao Cardápio</button>
+    <div id="cart-items"></div>
+    <div class="cart-totals" id="cart-totals"></div>
+    <div class="form-group">
+      <label for="cart-observations">Observações gerais</label>
+      <textarea id="cart-observations" rows="3" placeholder="Alguma observação? (opcional)"></textarea>
+    </div>
+    <button class="btn btn-primary" id="checkout-whatsapp">Enviar pelo WhatsApp</button>
+    <!-- Botão para gerar cupom/recibo em formato de impressão -->
+    <button class="btn btn-secondary" id="print-coupon" style="margin-top:0.5rem;">Gerar Cupom</button>
+  </section>
+
+  <!-- Tela 4: Editor do cardápio -->
+  <section id="editor-screen">
+    <h2>Editor do Cardápio</h2>
+    <p>Use este editor para alterar grupos, itens, descrições, preços e imagens. As alterações são salvas no armazenamento local do navegador.</p>
+    <div id="editor-content"></div>
+    <div style="margin-top:1rem; display:flex; gap:0.5rem;">
+      <button class="btn btn-secondary" id="editor-add-category">Adicionar Grupo</button>
+      <button class="btn btn-secondary" id="editor-cancel">Cancelar</button>
+      <button class="btn btn-primary" id="editor-save">Salvar Alterações</button>
+    </div>
+  </section>
+
+  <!-- Badge de carrinho flutuante -->
+  <div class="cart-badge" id="cart-badge" style="display:none;">
+    🛒 <span id="cart-count"></span>
+  </div>
+
+  <!-- Modal de montagem -->
+  <div class="modal-overlay" id="modal-overlay">
+    <div class="modal" id="modal">
+      <h2 id="modal-title">Montar Item</h2>
+      <div id="modal-content"></div>
+      <div class="modal-actions">
+        <button class="btn btn-secondary" id="modal-cancel">Cancelar</button>
+        <button class="btn btn-primary" id="modal-save">Adicionar</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Definições de dados do cardápio e imagens embutidas
+    // ASSETS armazena as imagens base64 (Data URI) associadas aos produtos.
+    // Quando você tiver as imagens, substitua cada valor de chave pelo Data URI
+    // correspondente. Por exemplo: ASSETS['hadouken'] = 'data:image/png;base64,AAAA...'.
+    // Objeto de imagens base64. Utilizamos 'let' para permitir edição em
+    // tempo de execução pelo editor. As imagens podem ser lidas de
+    // localStorage ou definidas como Data URI manualmente.
+    let assets = {
+      // Exemplo de entrada (substitua quando tiver imagens reais):
+      // hadouken: 'data:image/png;base64,...',
+    };
+
+    // =====================
+    // Definição de listas globais de ingredientes, sabores e acompanhamentos
+    // Cada entrada possui um nome e uma flag de disponibilidade. Os dados
+    // podem ser persistidos no localStorage para permitir o bloqueio de
+    // ingredientes fora de estoque. O editor permite ajustar estes
+    // valores. Se `available` for false o ingrediente não será exibido
+    // nas opções de montagem.
+
+    // Proteínas para itens montados (pastéis, tapiocas, etc.)
+    let proteins = [
+      { name: 'Carne', available: true },
+      { name: 'Frango', available: true },
+      { name: 'Costela', available: true },
+      { name: 'Pernil', available: true },
+    ];
+
+    // Acompanhamentos (ingredientes) comuns para montagens
+    let ingredients = [
+      { name: 'Bacon', available: true },
+      { name: 'Calabresa', available: true },
+      { name: 'Ovo de codorna', available: true },
+      { name: 'Presunto', available: true },
+      { name: 'Milho verde', available: true },
+      { name: 'Ervilha', available: true },
+      { name: 'Passas', available: true },
+      { name: 'Azeitona', available: true },
+      { name: 'Tomate cru', available: true },
+      { name: 'Cebola', available: true },
+      { name: 'Champignon', available: true },
+      { name: 'Palmito', available: true },
+      { name: 'Cebola crispy', available: true },
+      { name: 'Alho torrado', available: true },
+      { name: 'Queijo Minas', available: true },
+      { name: 'Queijo muçarela', available: true },
+      { name: 'Queijo prato', available: true },
+      { name: 'Catupiry', available: true },
+      { name: 'Cheddar', available: true },
+      { name: 'Orégano', available: true },
+      { name: 'Queijo parmesão', available: true },
+    ];
+
+    // Molhos especiais para hambúrgueres
+    let sauces = [
+      { name: 'Molho Verde', available: true },
+      { name: 'Molho Tartáro', available: true },
+      { name: 'Molho Tasty', available: true },
+      { name: 'Molho Billy Jack', available: true },
+      { name: 'Molho Alho com Ervas finas', available: true },
+      { name: 'Molho de Alho', available: true },
+      { name: 'Ketchup de Goiabada', available: true },
+      { name: 'Ketchup de Goiabada Picante', available: true },
+    ];
+
+    // Extras opcionais para hambúrgueres
+    let extras = [
+      { name: 'Alho torrado', available: true },
+      { name: 'Cebola crispy', available: true },
+    ];
+
+    // Sabores de açaí
+    let acaiFlavors = [
+      { name: 'Açai Poupa', available: true },
+      { name: 'Açai c/ Morango', available: true },
+      { name: 'Açai c/ Banana', available: true },
+      { name: 'Açai c/ Maracuja', available: true },
+    ];
+
+    // Sabores de sorvete
+    let iceCreamFlavors = [
+      { name: 'Torta Limão', available: true },
+      { name: 'Maracujá', available: true },
+      { name: 'Napolitano', available: true },
+      { name: 'Prestigio', available: true },
+      { name: 'Chocolate', available: true },
+    ];
+
+    // Toppings para açaí e sorvete
+    let toppings = [
+      { name: 'Canudo de Biscoito', available: true },
+      { name: 'Jujuba', available: true },
+      { name: 'Delicado', available: true },
+      { name: 'Confetes Chocolate', available: true },
+      { name: 'Sucrilhos', available: true },
+      { name: 'Flocos de Arroz', available: true },
+      { name: 'Aveia', available: true },
+      { name: 'Amendoim', available: true },
+      { name: 'Paçoca', available: true },
+      { name: 'Chocoball', available: true },
+      { name: 'Granulado Chocolate', available: true },
+      { name: 'Leite em Pó', available: true },
+      { name: 'Granola', available: true },
+    ];
+
+    // Caldas (syrups) para açaí e sorvete
+    // Estas opções representam sabores de calda extras que o cliente pode
+    // acrescentar no açaí/sorvete. São editáveis no modo editor e podem
+    // ser selecionadas em quantidade ilimitada pelo cliente.
+    let syrups = [
+      { name: 'Morango', available: true },
+      { name: 'Chocolate', available: true },
+      { name: 'Chocolate com Menta', available: true },
+      { name: 'Brigadeiro', available: true },
+      { name: 'Leite Condensado', available: true },
+      { name: 'Floresta Negra', available: true },
+    ];
+
+    // Definição dos produtos e categorias
+    // Lista de grupos de produtos. Também usamos 'let' para permitir
+    // adição/remoção de itens e categorias no modo editor.
+    // Antes de sobrescrever via localStorage, este array servirá como
+    // fonte de dados padrão. Após esta definição, criamos um mapa com
+    // as opções de personalização padrão (customOptions/proteinLimit) para
+    // cada item. Esse mapa é usado para restaurar propriedades ausentes
+    // em categorias carregadas do localStorage.
+    let categories = [
+      {
+        key: 'batatas',
+        name: 'Batatas do Dragão',
+        emoji: '🍟',
+        items: [
+          { id: '1-up', name: 'Batata Comum (P) "1-UP"', description: 'Batata comum pequena', price: 4.00 },
+          { id: 'smash-bros', name: 'Batata (P) "Smash Bros"', description: 'Batata pequena especial', price: 6.00 },
+          { id: 'scorpion', name: 'Batata 25cm "Scorpion"', description: 'Batata 25 cm', price: 25.00 },
+          { id: 'final-boss', name: 'Batata 35cm "Final Boss"', description: 'Batata 35 cm', price: 35.00 },
+          { id: 'fatality-batata', name: 'Batata 25cm "Fatality"', description: 'Batata 25 cm (2 molhos)', price: 45.00 },
+          { id: 'brutality', name: 'Batata 35cm "Brutality"', description: 'Batata 35 cm (3 molhos)', price: 55.00 },
+        ],
+      },
+      {
+        key: 'hamburgers',
+        name: 'Hambúrgueres',
+        emoji: '🍔',
+        items: [
+          {
+            id: 'hadouken',
+            name: '"Hadouken"',
+            description: 'Escolha do blend: bovino+bacon ou bovino+calabresa',
+            price: 6.50,
+            customizable: true,
+            // obrigatório escolher 1 blend
+            customOptions: [
+              {
+                key: 'blend',
+                name: 'Escolha o Blend',
+                type: 'radio',
+                maxSelections: 1,
+                required: true,
+                choices: [
+                  { value: 'Blend Bovino+Bacon 60g', label: 'Bovino+Bacon 60g', available: true },
+                  { value: 'Blend Bovino+Calabresa 60g', label: 'Bovino+Calabresa 60g', available: true },
+                ],
+              },
+              {
+                key: 'sauces',
+                name: 'Molhos Especiais',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'sauces',
+              },
+              {
+                key: 'extras',
+                name: 'Extras',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'extras',
+              },
+            ],
+          },
+          {
+            id: 'banquete-luffy',
+            name: '"Banquete do Luffy"',
+            description: '',
+            price: 12.00,
+            customizable: true,
+            customOptions: [
+              {
+                key: 'blend',
+                name: 'Escolha o Blend',
+                type: 'radio',
+                maxSelections: 1,
+                required: true,
+                choices: [
+                  { value: 'Blend Bovino+Bacon 60g', label: 'Bovino+Bacon 60g', available: true },
+                  { value: 'Blend Bovino+Calabresa 60g', label: 'Bovino+Calabresa 60g', available: true },
+                ],
+              },
+              {
+                key: 'sauces',
+                name: 'Molhos Especiais',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'sauces',
+              },
+              {
+                key: 'extras',
+                name: 'Extras',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'extras',
+              },
+            ],
+          },
+          {
+            id: 'fatality-burger',
+            name: '"Fatality"',
+            description: '',
+            price: 11.00,
+            customizable: true,
+            // X-Bacon: blend fixo (bacon) mas permite molhos/extras
+            customOptions: [
+              {
+                key: 'sauces',
+                name: 'Molhos Especiais',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'sauces',
+              },
+              {
+                key: 'extras',
+                name: 'Extras',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'extras',
+              },
+            ],
+          },
+          {
+            id: 'chamas-do-dragao',
+            name: '"Chamas do Dragão"',
+            description: '',
+            price: 11.00,
+            customizable: true,
+            // X-Calabresa: blend fixo (calabresa) mas permite molhos/extras
+            customOptions: [
+              {
+                key: 'sauces',
+                name: 'Molhos Especiais',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'sauces',
+              },
+              {
+                key: 'extras',
+                name: 'Extras',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'extras',
+              },
+            ],
+          },
+          {
+            id: 'kamehameha',
+            name: '"Kamehameha"',
+            description: '',
+            price: 18.00,
+            customizable: true,
+            // duplo: escolher até 2 blends
+            customOptions: [
+              {
+                key: 'blend',
+                name: 'Escolha o Blend (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: true,
+                choices: [
+                  { value: 'Blend Bovino+Bacon 60g', label: 'Bovino+Bacon 60g', available: true },
+                  { value: 'Blend Bovino+Calabresa 60g', label: 'Bovino+Calabresa 60g', available: true },
+                ],
+              },
+              {
+                key: 'sauces',
+                name: 'Molhos Especiais',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'sauces',
+              },
+              {
+                key: 'extras',
+                name: 'Extras',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'extras',
+              },
+            ],
+          },
+          {
+            id: 'modo-bijuu',
+            name: '"Modo Bijuu"',
+            description: '',
+            price: 25.00,
+            customizable: true,
+            // triplo: escolher até 3 blends
+            customOptions: [
+              {
+                key: 'blend',
+                name: 'Escolha o Blend (até 3)',
+                type: 'checkbox',
+                maxSelections: 3,
+                required: true,
+                choices: [
+                  { value: 'Blend Bovino+Bacon 60g', label: 'Bovino+Bacon 60g', available: true },
+                  { value: 'Blend Bovino+Calabresa 60g', label: 'Bovino+Calabresa 60g', available: true },
+                ],
+              },
+              {
+                key: 'sauces',
+                name: 'Molhos Especiais',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'sauces',
+              },
+              {
+                key: 'extras',
+                name: 'Extras',
+                type: 'checkbox',
+                maxSelections: 1,
+                required: false,
+                choicesSource: 'extras',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        key: 'pasteis',
+        name: 'Pastéis',
+        emoji: '🥟',
+        items: [
+          { id: 'shuriken', name: 'Shuriken — 15 cm', description: 'Montagem: 1 proteína + até 18 ingredientes', price: 0.00, customizable: true, priceInput: true, proteinLimit: 1, available: true },
+          { id: 'grand-line', name: 'Grand Line — 25 cm', description: 'Montagem: 2 proteínas + até 18 ingredientes', price: 0.00, customizable: true, priceInput: true, proteinLimit: 2, available: true },
+        ],
+      },
+      {
+        key: 'tapiocas-salgadas',
+        name: 'Tapiocas Salgadas',
+        emoji: '🥙',
+        items: [
+          { id: 'kanto', name: 'Kanto — Pequena', description: 'Montagem: 1 proteína + até 18 ingredientes', price: 10.00, customizable: true, proteinLimit: 1, available: true },
+          { id: 'johto', name: 'Johto — Média', description: 'Montagem: 2 proteínas + até 18 ingredientes', price: 15.00, customizable: true, proteinLimit: 2, available: true },
+        ],
+      },
+      {
+        key: 'tapiocas-doces',
+        name: 'Tapiocas Doces',
+        emoji: '🥙',
+        items: [
+          { id: 'alola-p', name: 'Alola P', description: '', price: 10.00 },
+          { id: 'alola-g', name: 'Alola G', description: '', price: 15.00 },
+          { id: 'cerulean-p', name: 'Cerulean P', description: '', price: 10.00 },
+          { id: 'cerulean-g', name: 'Cerulean G', description: '', price: 15.00 },
+        ],
+      },
+      {
+        key: 'bebidas',
+        name: 'Bebidas',
+        emoji: '🥤',
+        items: [
+          // Lista de bebidas atualizada conforme menu em PDF
+          { id: 'guaracamp-copo', name: 'Guaracamp Copo', description: '', price: 2.00, available: true },
+          { id: 'mini-200', name: 'Refrigerante Mini 200ml', description: '', price: 3.00, available: true },
+          { id: 'agua-gas', name: 'Água com gás', description: '', price: 3.50, available: true },
+          { id: 'agua-comum', name: 'Água', description: '', price: 3.50, available: true },
+          { id: 'lata', name: 'Refrigerante Lata', description: '', price: 5.50, available: true },
+          { id: 'conveniencia', name: 'Conveniência 2L', description: '', price: 7.50, available: true },
+          { id: 'sabores-2l', name: 'Refrigerantes Sabores 2L', description: '', price: 12.00, available: true },
+          { id: 'coca-2l', name: 'Coca-Cola 2L', description: '', price: 14.00, available: true },
+        ],
+      },
+      {
+        key: 'acai',
+        name: 'Açaí / Sorvete',
+        emoji: '🍨',
+        items: [
+          {
+            id: 'acai-200',
+            name: 'Açaí / Sorvete 200 ml',
+            description: '',
+            price: 6.50,
+            customizable: true,
+            available: true,
+            customOptions: [
+              {
+                key: 'flavors',
+                name: 'Sabores (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: false,
+                choicesSource: 'allFlavors',
+              },
+              {
+                key: 'toppings',
+                name: 'Toppings',
+                type: 'checkbox',
+                // permitir seleção ilimitada de toppings; usamos o tamanho
+                // do array global toppings para definir maxSelections
+                maxSelections: toppings.length,
+                required: false,
+                choicesSource: 'toppings',
+              },
+              {
+                key: 'syrups',
+                name: 'Caldas',
+                type: 'checkbox',
+                maxSelections: syrups.length,
+                required: false,
+                choicesSource: 'syrups',
+              },
+            ],
+          },
+          {
+            id: 'acai-300',
+            name: 'Açaí / Sorvete 300 ml',
+            description: '',
+            price: 9.00,
+            customizable: true,
+            available: true,
+            customOptions: [
+              {
+                key: 'flavors',
+                name: 'Sabores (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: false,
+                choicesSource: 'allFlavors',
+              },
+              {
+                key: 'toppings',
+                name: 'Toppings',
+                type: 'checkbox',
+                maxSelections: toppings.length,
+                required: false,
+                choicesSource: 'toppings',
+              },
+              {
+                key: 'syrups',
+                name: 'Caldas',
+                type: 'checkbox',
+                maxSelections: syrups.length,
+                required: false,
+                choicesSource: 'syrups',
+              },
+            ],
+          },
+          {
+            id: 'acai-400',
+            name: 'Açaí / Sorvete 400 ml',
+            description: '',
+            price: 11.00,
+            customizable: true,
+            available: true,
+            customOptions: [
+              {
+                key: 'flavors',
+                name: 'Sabores (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: false,
+                choicesSource: 'allFlavors',
+              },
+              {
+                key: 'toppings',
+                name: 'Toppings',
+                type: 'checkbox',
+                maxSelections: toppings.length,
+                required: false,
+                choicesSource: 'toppings',
+              },
+              {
+                key: 'syrups',
+                name: 'Caldas',
+                type: 'checkbox',
+                maxSelections: syrups.length,
+                required: false,
+                choicesSource: 'syrups',
+              },
+            ],
+          },
+          {
+            id: 'acai-500',
+            name: 'Açaí / Sorvete 500 ml',
+            description: '',
+            price: 14.00,
+            customizable: true,
+            available: true,
+            customOptions: [
+              {
+                key: 'flavors',
+                name: 'Sabores (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: false,
+                choicesSource: 'allFlavors',
+              },
+              {
+                key: 'toppings',
+                name: 'Toppings',
+                type: 'checkbox',
+                maxSelections: toppings.length,
+                required: false,
+                choicesSource: 'toppings',
+              },
+              {
+                key: 'syrups',
+                name: 'Caldas',
+                type: 'checkbox',
+                maxSelections: syrups.length,
+                required: false,
+                choicesSource: 'syrups',
+              },
+            ],
+          },
+          {
+            id: 'acai-700',
+            name: 'Açaí / Sorvete 700 ml',
+            description: '',
+            price: 20.00,
+            customizable: true,
+            available: true,
+            customOptions: [
+              {
+                key: 'flavors',
+                name: 'Sabores (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: false,
+                choicesSource: 'allFlavors',
+              },
+              {
+                key: 'toppings',
+                name: 'Toppings',
+                type: 'checkbox',
+                maxSelections: toppings.length,
+                required: false,
+                choicesSource: 'toppings',
+              },
+              {
+                key: 'syrups',
+                name: 'Caldas',
+                type: 'checkbox',
+                maxSelections: syrups.length,
+                required: false,
+                choicesSource: 'syrups',
+              },
+            ],
+          },
+          {
+            id: 'acai-1000',
+            name: 'Açaí / Sorvete 1 L',
+            description: '',
+            price: 24.00,
+            customizable: true,
+            available: true,
+            customOptions: [
+              {
+                key: 'flavors',
+                name: 'Sabores (até 2)',
+                type: 'checkbox',
+                maxSelections: 2,
+                required: false,
+                choicesSource: 'allFlavors',
+              },
+              {
+                key: 'toppings',
+                name: 'Toppings',
+                type: 'checkbox',
+                maxSelections: toppings.length,
+                required: false,
+                choicesSource: 'toppings',
+              },
+              {
+                key: 'syrups',
+                name: 'Caldas',
+                type: 'checkbox',
+                maxSelections: syrups.length,
+                required: false,
+                choicesSource: 'syrups',
+              },
+            ],
+          },
+        ],
+      },
+      {
+        key: 'caldo-de-cana',
+        name: 'Caldo de Cana',
+        emoji: '🥤',
+        items: [
+          { id: 'caldo-500', name: 'Caldo de Cana 500 ml', description: '', price: 6.00 },
+        ],
+      },
+      // Nova categoria para Prensados, incluindo o modo criativo
+      {
+        key: 'prensados',
+        name: 'Prensados',
+        emoji: '🥪',
+        items: [
+          {
+            id: 'modo-criativo',
+            name: 'Prensado Modo Criativo',
+            description: 'Escolha 1 proteína e combine até 18 itens de acompanhamentos',
+            price: 18.00,
+            customizable: true,
+            proteinLimit: 1,
+            available: true,
+          },
+        ],
+      },
+    ];
+
+    /**
+     * Variáveis de estado: armazenam informações do cliente e do carrinho.
+     * São carregadas do localStorage na inicialização e salvas a cada
+     * alteração.
+     */
+    let customer = {
+      name: '',
+      phone: '',
+      type: 'Entrega',
+      address: {
+        logradouro: '',
+        number: '',
+        complement: '',
+        bairro: '',
+        marco: '',
+        cidade: 'Seropédica-RJ',
+        km: '39',
+        freight: 0,
+      },
+    };
+    let cart = [];
+    let cartObservations = '';
+
+    // ==============================
+    // Mapa de dados padrão dos itens
+    // Este objeto armazena as definições originais de personalização para
+    // cada item (customOptions e proteinLimit) conforme declaradas nas
+    // categorias acima. Ele é preenchido imediatamente após a definição
+    // inicial das categorias. Ao carregar categorias do localStorage,
+    // usamos esse mapa para restaurar campos ausentes, garantindo que
+    // itens já salvos continuem com as opções de montagem corretas.
+    const defaultItemData = {};
+    // Popula defaultItemData a partir das categorias originais
+    categories.forEach(group => {
+      if (!group || !group.items) return;
+      group.items.forEach(item => {
+        if (!item || !item.id) return;
+        defaultItemData[item.id] = {};
+        if (Array.isArray(item.customOptions)) {
+          // Clonar profundamente para evitar mutações
+          defaultItemData[item.id].customOptions = JSON.parse(JSON.stringify(item.customOptions));
+        }
+        if (item.proteinLimit !== undefined) {
+          defaultItemData[item.id].proteinLimit = item.proteinLimit;
+        }
+      });
+    });
+
+    // Senha do editor armazenada como sequência de códigos de caracteres para não
+    // exibir a senha em texto claro no código. A senha original é
+    // "EdLeoMarc&2025". Para verificar, convertemos cada código para
+    // caractere e comparamos com a entrada do usuário.
+    const editorPasswordCodes = [69, 100, 76, 101, 111, 77, 97, 114, 99, 38, 50, 48, 50, 53];
+    function getEditorPassword() {
+      return editorPasswordCodes.map(c => String.fromCharCode(c)).join('');
+    }
+
+    /**
+     * Utilidade: formata um número como moeda brasileira (BRL) com vírgula
+     * decimal. Usa toLocaleString para garantir a formatação correta.
+     *
+     * @param {number} value
+     * @returns {string}
+     */
+    function formatCurrency(value) {
+      return value.toLocaleString('pt-BR', {
+        style: 'currency',
+        currency: 'BRL',
+        minimumFractionDigits: 2,
+      });
+    }
+
+    /**
+     * Carrega dados salvos no localStorage (se existirem) e os aplica às
+     * variáveis globais de estado e aos campos do formulário.
+     */
+    function loadFromStorage() {
+      try {
+        // Determinar se há um usuário logado. Se existir, carregar suas
+        // informações de cliente em vez do backup genérico.
+        const currentUserKey = localStorage.getItem('palatarius_current_user');
+        if (currentUserKey) {
+          try {
+            const usersStore = JSON.parse(localStorage.getItem('palatarius_users')) || {};
+            if (usersStore[currentUserKey] && usersStore[currentUserKey].customer) {
+              customer = JSON.parse(JSON.stringify(usersStore[currentUserKey].customer));
+            }
+          } catch(e) {
+            // falha ao carregar usuários; ignorar
+          }
+        } else {
+          const storedCustomer = localStorage.getItem('palatarius_customer');
+          if (storedCustomer) {
+            customer = JSON.parse(storedCustomer);
+          }
+        }
+        const storedCart = localStorage.getItem('palatarius_cart');
+        if (storedCart) {
+          cart = JSON.parse(storedCart);
+        }
+        const storedObs = localStorage.getItem('palatarius_cart_obs');
+        if (storedObs) {
+          cartObservations = storedObs;
+        }
+        // Carregar catálogo e imagens personalizados, se existirem
+        const storedCats = localStorage.getItem('palatarius_categories');
+        if (storedCats) {
+          try {
+            categories = JSON.parse(storedCats);
+            // Após carregar categorias salvas, restaure campos de personalização
+            // ausentes usando o mapa defaultItemData. Isso assegura que
+            // customOptions e proteinLimit não sejam perdidos entre versões.
+            categories.forEach(cat => {
+              if (!cat.items) return;
+              cat.items.forEach(item => {
+                const def = defaultItemData[item.id];
+                if (!def) return;
+                // Se o item original possuía customOptions mas o salvo não possui,
+                // atribui uma cópia das opções padrão
+                if (def.customOptions && !Array.isArray(item.customOptions)) {
+                  item.customOptions = JSON.parse(JSON.stringify(def.customOptions));
+                }
+                // Se o item original possuía proteinLimit e o salvo não
+                // definiu explicitamente, restaure o valor padrão
+                if (def.proteinLimit !== undefined && item.proteinLimit === undefined) {
+                  item.proteinLimit = def.proteinLimit;
+                }
+                // Se o item tiver opções de personalização (customOptions) ou um
+                // proteinLimit definido, mas a propriedade customizable estiver
+                // falsa ou ausente, torne-o customizável por padrão. Isso evita
+                // que itens previamente salvos percam a flag de montagem.
+                if ((Array.isArray(item.customOptions) || item.proteinLimit !== undefined) && !item.customizable) {
+                  item.customizable = true;
+                }
+              });
+            });
+            // Para garantir que os hambúrgueres sempre tenham apenas um molho e um extra,
+            // atualize o maxSelections de 'sauces' e 'extras' para 1 em itens já salvos.
+            categories.forEach(cat => {
+              if (!cat.items) return;
+              cat.items.forEach(item => {
+                if (Array.isArray(item.customOptions)) {
+                  item.customOptions.forEach(group => {
+                    if (group.key === 'sauces' || group.key === 'extras') {
+                      group.maxSelections = 1;
+                    }
+                  });
+                }
+              });
+            });
+
+            // Ajustar itens de açaí/sorvete para permitir toppings ilimitados e incluir caldas
+            categories.forEach(cat => {
+              if (!cat || cat.key !== 'acai' || !Array.isArray(cat.items)) return;
+              cat.items.forEach(item => {
+                if (!Array.isArray(item.customOptions)) return;
+                let hasToppings = false;
+                let hasSyrups = false;
+                item.customOptions.forEach(group => {
+                  if (group.key === 'toppings') {
+                    group.maxSelections = toppings.length;
+                    hasToppings = true;
+                  }
+                  if (group.key === 'syrups') {
+                    group.maxSelections = syrups.length;
+                    hasSyrups = true;
+                  }
+                });
+                // Inserir grupo de caldas se não existir
+                if (!hasSyrups) {
+                  item.customOptions.push({
+                    key: 'syrups',
+                    name: 'Caldas',
+                    type: 'checkbox',
+                    maxSelections: syrups.length,
+                    required: false,
+                    choicesSource: 'syrups',
+                  });
+                }
+              });
+            });
+          } catch (e) {
+            console.error('Erro ao analisar categorias armazenadas:', e);
+          }
+        }
+        const storedAssets = localStorage.getItem('palatarius_assets');
+        if (storedAssets) {
+          try {
+            assets = JSON.parse(storedAssets);
+          } catch (e) {
+            console.error('Erro ao analisar assets armazenados:', e);
+          }
+        }
+      // Carregar listas globais se existirem
+      const storedOpts = localStorage.getItem('palatarius_options');
+      if (storedOpts) {
+        try {
+          const opts = JSON.parse(storedOpts);
+          /**
+           * Quando as listas são gravadas em versões antigas, podem conter
+           * entradas como strings simples. Para o editor e as opções de
+           * personalização funcionarem corretamente, convertemos qualquer
+           * string em um objeto com as propriedades `name` e `available`.
+           * Se já for um objeto, apenas garantimos que `available` existe.
+           */
+          function normalizeList(list) {
+            if (!Array.isArray(list)) return [];
+            return list.map(item => {
+              if (typeof item === 'string') {
+                return { name: item, available: true };
+              }
+              // garantir que tenha name/label
+              const obj = { ...item };
+              if (obj.name === undefined && obj.label !== undefined) {
+                obj.name = obj.label;
+              }
+              if (obj.available === undefined) {
+                obj.available = true;
+              }
+              return obj;
+            });
+          }
+          if (opts.proteins) proteins = normalizeList(opts.proteins);
+          if (opts.ingredients) ingredients = normalizeList(opts.ingredients);
+          if (opts.sauces) sauces = normalizeList(opts.sauces);
+          if (opts.extras) extras = normalizeList(opts.extras);
+          if (opts.acaiFlavors) acaiFlavors = normalizeList(opts.acaiFlavors);
+          if (opts.iceCreamFlavors) iceCreamFlavors = normalizeList(opts.iceCreamFlavors);
+          if (opts.toppings) toppings = normalizeList(opts.toppings);
+          if (opts.syrups) syrups = normalizeList(opts.syrups);
+        } catch (e) {
+          console.error('Erro ao analisar opções globais armazenadas:', e);
+        }
+      }
+      } catch (e) {
+        console.error('Erro ao carregar localStorage', e);
+      }
+      // Aplicar dados ao formulário de cliente
+      document.getElementById('customer-name').value = customer.name || '';
+      document.getElementById('customer-phone').value = customer.phone || '';
+      document.getElementById('order-type').value = customer.type || 'Entrega';
+      // Mostrar/ocultar campos de entrega conforme tipo
+      if (customer.type === 'Entrega') {
+        document.getElementById('delivery-fields').style.display = 'block';
+      }
+      document.getElementById('address-logradouro').value = customer.address.logradouro || '';
+      document.getElementById('address-number').value = customer.address.number || '';
+      document.getElementById('address-complement').value = customer.address.complement || '';
+      document.getElementById('address-bairro').value = customer.address.bairro || '';
+      document.getElementById('address-marco').value = customer.address.marco || '';
+      document.getElementById('address-cidade').value = customer.address.cidade || 'Seropédica-RJ';
+      document.getElementById('address-km').value = customer.address.km || '39';
+      if (customer.address.km === 'Outro') {
+        document.getElementById('uber-freight-group').style.display = 'block';
+      }
+      document.getElementById('uber-freight').value = customer.address.freight || '';
+      // Atualizar badge do carrinho
+      updateCartBadge();
+      // Se ainda não há categoria ativa ou a atual não existe, definir para a primeira
+      if (!activeCategory || !categories.find(c => c.key === activeCategory)) {
+        activeCategory = categories.length ? categories[0].key : undefined;
+      }
+    }
+
+    /**
+     * Salva dados do cliente e do carrinho no localStorage.
+     */
+    function saveToStorage() {
+      localStorage.setItem('palatarius_customer', JSON.stringify(customer));
+      localStorage.setItem('palatarius_cart', JSON.stringify(cart));
+      localStorage.setItem('palatarius_cart_obs', cartObservations);
+      // Salvar catálogo e imagens também
+      saveCatalog();
+
+      // Se houver um usuário logado, persistir seus dados
+      const currentUserKey = localStorage.getItem('palatarius_current_user');
+      if (currentUserKey) {
+        try {
+          const usersStore = JSON.parse(localStorage.getItem('palatarius_users')) || {};
+          if (usersStore[currentUserKey]) {
+            usersStore[currentUserKey].customer = customer;
+            localStorage.setItem('palatarius_users', JSON.stringify(usersStore));
+          }
+        } catch (ex) {
+          // ignorar erros de parse
+        }
+      }
+    }
+
+    /**
+     * Salva o catálogo (categorias e itens) e o mapa de imagens no localStorage.
+     */
+    function saveCatalog() {
+      try {
+        localStorage.setItem('palatarius_categories', JSON.stringify(categories));
+        localStorage.setItem('palatarius_assets', JSON.stringify(assets));
+        // Salvar listas globais de opções
+        const optionsObj = {
+          proteins: proteins,
+          ingredients: ingredients,
+          sauces: sauces,
+          extras: extras,
+          acaiFlavors: acaiFlavors,
+          iceCreamFlavors: iceCreamFlavors,
+          toppings: toppings,
+          syrups: syrups,
+        };
+        localStorage.setItem('palatarius_options', JSON.stringify(optionsObj));
+      } catch (e) {
+        console.error('Erro ao salvar catálogo:', e);
+      }
+    }
+
+    /**
+     * Calcula o valor do frete com base nos dados do cliente.
+     * - Para retirada: 0.
+     * - Para entrega em KM 39–42: valor fixo de 4,00.
+     * - Para "Outro": utiliza o valor informado pelo usuário.
+     * - Se nenhum valor informado em "Outro", assume 0.
+     *
+     * @returns {number}
+     */
+    function calculateFreight() {
+      if (customer.type === 'Retirada') return 0;
+      const km = customer.address.km;
+      if (['39','40','41','42'].includes(km)) {
+        return 4.00;
+      }
+      // Outro: valor informado
+      const freightVal = parseFloat(customer.address.freight);
+      return isNaN(freightVal) ? 0 : freightVal;
+    }
+
+    /**
+     * Navega entre as telas (sections). Recebe o id da seção a ser exibida
+     * e oculta todas as outras.
+     *
+     * @param {string} screenId
+     */
+    function showScreen(screenId) {
+      const sections = document.querySelectorAll('section');
+      sections.forEach(sec => {
+        sec.classList.remove('active');
+      });
+      document.getElementById(screenId).classList.add('active');
+      // Se for a tela de carrinho, renderizar carrinho
+      if (screenId === 'cart-screen') {
+        renderCart();
+      }
+    }
+
+    /**
+     * Gera o identificador do pedido conforme especificado: {NOME_CLIENTE} -
+     * {DD/MM/AAAA} {HH:MM} - {últimos 2 dígitos do telefone}.
+     *
+     * @returns {string}
+     */
+    function generateOrderId() {
+      const now = new Date();
+      const date = now.toLocaleDateString('pt-BR');
+      const time = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const phone = customer.phone || '';
+      const last2 = phone.slice(-2);
+      return `${customer.name} - ${date} ${time} - ${last2}`;
+    }
+
+    /**
+     * Atualiza o badge flutuante de carrinho com a contagem total de itens.
+     */
+    function updateCartBadge() {
+      const badge = document.getElementById('cart-badge');
+      const countSpan = document.getElementById('cart-count');
+      const totalCount = cart.reduce((sum, item) => sum + item.quantity, 0);
+      if (totalCount > 0) {
+        badge.style.display = 'flex';
+        countSpan.textContent = totalCount;
+      } else {
+        badge.style.display = 'none';
+        countSpan.textContent = '';
+      }
+    }
+
+    /**
+     * Renderiza a navegação das categorias e o menu de itens da categoria
+     * selecionada. Permite busca textual através do campo de busca.
+     */
+    // Categoria ativa inicia com a primeira categoria disponível após carregar do armazenamento
+    let activeCategory;
+    function renderCategories() {
+      const nav = document.getElementById('category-nav');
+      nav.innerHTML = '';
+        categories.forEach(cat => {
+        const btn = document.createElement('button');
+        btn.textContent = cat.name;
+        btn.classList.toggle('active', cat.key === activeCategory);
+        btn.addEventListener('click', () => {
+          activeCategory = cat.key;
+          renderCategories();
+          renderProducts();
+        });
+        nav.appendChild(btn);
+      });
+    }
+
+    function renderProducts() {
+      const list = document.getElementById('product-list');
+      list.innerHTML = '';
+      // Obter texto de busca
+      const searchTerm = (document.getElementById('search-input').value || '').toLowerCase();
+      // Encontrar categoria ativa
+      const category = categories.find(c => c.key === activeCategory);
+      if (!category) return;
+      // Filtrar itens pela busca
+      const filteredItems = category.items.filter(item => {
+        const term = item.name.toLowerCase() + (item.description || '').toLowerCase();
+        return term.includes(searchTerm);
+      });
+      filteredItems.forEach(item => {
+        const card = document.createElement('div');
+        card.className = 'product-card';
+        // Imagem ou placeholder
+        const imgDiv = document.createElement('div');
+        imgDiv.className = 'product-image';
+        if (assets[item.id]) {
+          const img = document.createElement('img');
+          img.src = assets[item.id];
+          img.alt = item.name;
+          img.loading = 'lazy';
+          img.decoding = 'async';
+          imgDiv.appendChild(img);
+        } else {
+          // Placeholder com emoji relacionado
+          let placeholderEmoji = '🍔';
+          if (category.emoji) placeholderEmoji = category.emoji;
+          const span = document.createElement('span');
+          span.textContent = placeholderEmoji;
+          imgDiv.appendChild(span);
+          const placeholderText = document.createElement('small');
+          placeholderText.textContent = 'Foto em breve';
+          placeholderText.style.fontSize = '0.7rem';
+          placeholderText.style.color = 'var(--gray-light)';
+          placeholderText.style.position = 'absolute';
+          placeholderText.style.bottom = '0.4rem';
+          placeholderText.style.right = '0.4rem';
+          imgDiv.style.position = 'relative';
+          imgDiv.appendChild(placeholderText);
+        }
+        card.appendChild(imgDiv);
+        const content = document.createElement('div');
+        content.className = 'product-content';
+        const title = document.createElement('div');
+        title.className = 'product-title';
+        title.textContent = item.name;
+        content.appendChild(title);
+        if (item.description) {
+          const desc = document.createElement('div');
+          desc.className = 'product-desc';
+          desc.textContent = item.description;
+          content.appendChild(desc);
+        }
+        const price = document.createElement('div');
+        price.className = 'product-price';
+        // Se o item tiver priceInput, exibir "Preço a definir".
+        if (item.priceInput) {
+          price.textContent = 'Preço a definir';
+        } else {
+          price.textContent = formatCurrency(item.price);
+        }
+        content.appendChild(price);
+        const actions = document.createElement('div');
+        actions.className = 'product-actions';
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn btn-primary btn-small';
+        addBtn.textContent = 'Adicionar';
+        // Verificar disponibilidade do item
+        const isAvailable = (item.available !== false);
+        if (isAvailable) {
+        addBtn.addEventListener('click', () => {
+            // Verifique se o item exige customização. Além da flag "customizable",
+            // considere itens que possuem definições de customOptions ou proteinLimit.
+            // Determine se o item precisa de personalização. Além da flag "customizable",
+            // considere itens com a propriedade customOptions (mesmo se vazia ou não
+            // for array) ou com proteinLimit definido. Isso garante que
+            // hambúrgueres e outros itens configuráveis abram o modal mesmo
+            // quando dados antigos do localStorage não possuam array de opções.
+            const needsCustomization = item.customizable || (item.customOptions !== undefined) || (item.proteinLimit !== undefined);
+            if (needsCustomization) {
+              openCustomizationModal(item);
+            } else {
+              addToCart(item);
+            }
+          });
+        } else {
+          addBtn.disabled = true;
+          addBtn.textContent = 'Indisponível';
+          addBtn.style.backgroundColor = 'var(--gray-medium)';
+          addBtn.style.cursor = 'not-allowed';
+        }
+        actions.appendChild(addBtn);
+        content.appendChild(actions);
+        card.appendChild(content);
+        list.appendChild(card);
+      });
+    }
+
+    /**
+     * Adiciona um item ao carrinho sem personalização.
+     *
+     * @param {Object} item
+     */
+    function addToCart(item) {
+      // Procurar se já existe no carrinho (id e sem opções)
+      const existingIndex = cart.findIndex(ci => ci.id === item.id && !ci.options);
+      if (existingIndex !== -1) {
+        cart[existingIndex].quantity += 1;
+      } else {
+        cart.push({ id: item.id, name: item.name, price: item.price, quantity: 1 });
+      }
+      saveToStorage();
+      updateCartBadge();
+    }
+
+    /**
+     * Abre o modal de montagem para itens customizáveis. Permite selecionar
+     * proteínas (até 1), ingredientes (até 18), observações e preço quando
+     * apropriado. Caso seja edição de item já no carrinho, recebe também o
+     * índice desse item.
+     *
+     * @param {Object} item
+     * @param {number|null} editIndex
+     */
+    let currentModalItem = null;
+    let currentEditIndex = null;
+    function openCustomizationModal(item, editIndex = null) {
+      currentModalItem = item;
+      currentEditIndex = editIndex;
+      const modalContent = document.getElementById('modal-content');
+      modalContent.innerHTML = '';
+      // Título
+      document.getElementById('modal-title').textContent = `Montar ${item.name}`;
+      /**
+       * Função interna para gerar um grupo de opções no modal.
+       * Aceita tipo (radio ou checkbox), um array de choices, chave e
+       * limite de seleções. Cria elementos de input e trata o limite
+       * máximo desabilitando opções excedentes.
+       */
+      function createOptionGroup(group) {
+        const section = document.createElement('div');
+        section.className = 'modal-section';
+        const label = document.createElement('label');
+        label.textContent = group.name;
+        // Armazenar chave, limite e texto base para atualização
+        label.dataset.groupKey = group.key;
+        label.dataset.max = group.maxSelections || 1;
+        label.dataset.baseText = group.name;
+        section.appendChild(label);
+        const optsDiv = document.createElement('div');
+        optsDiv.className = 'options';
+        let choices = [];
+        if (group.choices) {
+          choices = group.choices;
+        } else if (group.choicesSource) {
+          // Determinar fonte de escolhas dinâmicas
+          switch (group.choicesSource) {
+            case 'proteins':
+              choices = proteins;
+              break;
+            case 'ingredients':
+              choices = ingredients;
+              break;
+            case 'sauces':
+              choices = sauces;
+              break;
+            case 'extras':
+              choices = extras;
+              break;
+            case 'acaiFlavors':
+              choices = acaiFlavors;
+              break;
+            case 'iceCreamFlavors':
+              choices = iceCreamFlavors;
+              break;
+            case 'allFlavors':
+              choices = [...acaiFlavors, ...iceCreamFlavors];
+              break;
+            case 'toppings':
+              choices = toppings;
+              break;
+              case 'syrups':
+                choices = syrups;
+                break;
+            default:
+              choices = [];
+          }
+        }
+        // Converter choices em objeto uniforme {value, label, available}
+        const choiceList = choices.map(ch => {
+          if (typeof ch === 'string') {
+            return { value: ch, label: ch, available: true };
+          }
+          return { value: ch.value || ch.name, label: ch.label || ch.name, available: ch.available !== false };
+        });
+        choiceList.forEach(choice => {
+          if (!choice.available) return;
+          const wrap = document.createElement('label');
+          wrap.className = 'option-item';
+          const input = document.createElement('input');
+          input.type = group.type === 'radio' ? 'radio' : 'checkbox';
+          input.name = group.key;
+          input.value = choice.value;
+          wrap.appendChild(input);
+          wrap.appendChild(document.createTextNode(choice.label));
+          // Atualizar contagem no change para checkbox groups
+          if (group.type === 'checkbox') {
+            input.addEventListener('change', () => {
+              updateGroupCounts(group.key, group.maxSelections || 1);
+            });
+          }
+          optsDiv.appendChild(wrap);
+        });
+        // Adicionar opção “Nenhum” para grupos não obrigatórios de radio
+        if (group.type === 'radio' && !group.required) {
+          const wrapNone = document.createElement('label');
+          wrapNone.className = 'option-item';
+          const inputNone = document.createElement('input');
+          inputNone.type = 'radio';
+          inputNone.name = group.key;
+          inputNone.value = '';
+          wrapNone.appendChild(inputNone);
+          wrapNone.appendChild(document.createTextNode('Nenhum'));
+          optsDiv.appendChild(wrapNone);
+        }
+        section.appendChild(optsDiv);
+        modalContent.appendChild(section);
+        // Inicializa contagem
+        if (group.type === 'checkbox') {
+          updateGroupCounts(group.key, group.maxSelections || 1);
+        }
+      }
+      /**
+       * Atualiza contagem de seleção de um grupo de checkboxes e desabilita
+       * opções extras quando atingir o limite. Atualiza o rótulo com
+       * contador, se houver.
+       *
+       * @param {string} key
+       * @param {number} max
+       */
+      function updateGroupCounts(key, max) {
+        const inputs = modalContent.querySelectorAll(`input[name="${key}"]`);
+        let selected = 0;
+        inputs.forEach(input => {
+          if (input.checked) selected++;
+        });
+        inputs.forEach(input => {
+          if (!input.checked && selected >= max) {
+            input.disabled = true;
+          } else {
+            input.disabled = false;
+          }
+        });
+        // Atualizar contador no rótulo
+        const label = modalContent.querySelector(`label[data-group-key="${key}"]`);
+        if (label) {
+          const base = label.dataset.baseText || label.textContent;
+          label.textContent = `${base} (${selected}/${max})`;
+        }
+      }
+      // Determinar grupos de personalização
+      let groups = [];
+      if (Array.isArray(item.customOptions)) {
+        groups = item.customOptions;
+      } else if (item.customizable) {
+        // Fallback para itens montáveis (pastéis, tapiocas, prensado) que usam proteínas e acompanhamentos
+        const pLimit = item.proteinLimit || 1;
+        groups = [
+          {
+            key: 'protein',
+            name: pLimit > 1 ? `Proteínas (até ${pLimit})` : 'Proteína',
+            type: pLimit > 1 ? 'checkbox' : 'radio',
+            maxSelections: pLimit,
+            required: false,
+            choicesSource: 'proteins',
+          },
+          {
+            key: 'ingredients',
+            name: 'Acompanhamentos (até 18)',
+            type: 'checkbox',
+            maxSelections: 18,
+            required: false,
+            choicesSource: 'ingredients',
+          },
+        ];
+      }
+      // Criar grupos no modal
+      groups.forEach(gr => {
+        createOptionGroup(gr);
+      });
+      // Campo de preço customizado, se aplicável
+      if (item.priceInput) {
+        const priceSection = document.createElement('div');
+        priceSection.className = 'modal-section';
+        const priceLabel = document.createElement('label');
+        priceLabel.textContent = 'Preço (R$)';
+        priceSection.appendChild(priceLabel);
+        const priceInput = document.createElement('input');
+        priceInput.type = 'number';
+        priceInput.min = '0';
+        priceInput.step = '0.01';
+        priceInput.id = 'custom-price';
+        priceSection.appendChild(priceInput);
+        modalContent.appendChild(priceSection);
+      }
+      // Observação do item
+      const obsSection = document.createElement('div');
+      obsSection.className = 'modal-section';
+      const obsLabel = document.createElement('label');
+      obsLabel.textContent = 'Observação do item';
+      obsSection.appendChild(obsLabel);
+      const obsInput = document.createElement('textarea');
+      obsInput.id = 'custom-observation';
+      obsInput.rows = 2;
+      obsSection.appendChild(obsInput);
+      modalContent.appendChild(obsSection);
+      // Preencher seleções ao editar
+      if (editIndex !== null && cart[editIndex]) {
+        const existing = cart[editIndex];
+        if (existing.options) {
+          Object.keys(existing.options).forEach(key => {
+            const value = existing.options[key];
+            if (!value) return;
+            const inputs = modalContent.querySelectorAll(`input[name="${key}"]`);
+            inputs.forEach(input => {
+              if (Array.isArray(value)) {
+                if (value.includes(input.value)) input.checked = true;
+              } else {
+                if (input.value === value) input.checked = true;
+              }
+            });
+            // Atualizar contagem para checkboxes
+            const groupDef = groups.find(g => g.key === key);
+            if (groupDef && groupDef.type === 'checkbox') {
+              updateGroupCounts(key, groupDef.maxSelections || 1);
+            }
+          });
+          // preço customizado
+          if (item.priceInput) {
+            modalContent.querySelector('#custom-price').value = existing.price;
+          }
+          // observação
+          modalContent.querySelector('#custom-observation').value = existing.options.observation || '';
+        }
+      }
+      // Exibir modal
+      document.getElementById('modal-overlay').classList.add('active');
+    }
+
+    /**
+     * Atualiza o contador de ingredientes no modal e desabilita checkboxes
+     * quando o limite de 18 é atingido.
+     */
+    function updateIngredientCounter() {
+      const checks = document.querySelectorAll('#modal-content input[name="ingredients"]');
+      let selected = 0;
+      checks.forEach(ch => { if (ch.checked) selected++; });
+      const counter = document.getElementById('ingredient-counter');
+      if (counter) counter.textContent = `Ingredientes (${selected}/18):`;
+      checks.forEach(ch => {
+        if (!ch.checked && selected >= 18) {
+          ch.disabled = true;
+        } else {
+          ch.disabled = false;
+        }
+      });
+    }
+
+    /**
+     * Fechar o modal e limpar variáveis temporárias.
+     */
+    function closeModal() {
+      document.getElementById('modal-overlay').classList.remove('active');
+      currentModalItem = null;
+      currentEditIndex = null;
+    }
+
+    /**
+     * Ao salvar no modal, cria/atualiza o item no carrinho com as opções
+     * selecionadas.
+     */
+    function saveModal() {
+      const modalEl = document.getElementById('modal-content');
+      // Preparar objeto de opções
+      const options = {};
+      // Se item tiver customOptions definidas, coletar conforme grupos; caso contrário usar fallback
+      if (Array.isArray(currentModalItem.customOptions)) {
+        currentModalItem.customOptions.forEach(group => {
+          const inputs = modalEl.querySelectorAll(`input[name="${group.key}"]`);
+          if (!inputs || inputs.length === 0) return;
+          if (group.type === 'radio') {
+            const checked = modalEl.querySelector(`input[name="${group.key}"]:checked`);
+            options[group.key] = checked ? checked.value : '';
+          } else {
+            const selected = Array.from(inputs).filter(i => i.checked).map(i => i.value);
+            options[group.key] = selected;
+          }
+        });
+      } else if (currentModalItem.customizable) {
+        // Coletar proteína
+        const protInputs = modalEl.querySelectorAll('input[name="protein"]');
+        if (protInputs.length) {
+          if (protInputs[0].type === 'radio') {
+            const checked = modalEl.querySelector('input[name="protein"]:checked');
+            options.protein = checked ? checked.value : '';
+          } else {
+            const selected = Array.from(protInputs).filter(i => i.checked).map(i => i.value);
+            options.protein = selected;
+          }
+        }
+        // Coletar ingredientes
+        const ingInputs = modalEl.querySelectorAll('input[name="ingredients"]:checked');
+        options.ingredients = Array.from(ingInputs).map(ch => ch.value);
+      }
+      // Observação
+      const observation = (modalEl.querySelector('#custom-observation')?.value || '').trim();
+      options.observation = observation;
+      // Preço customizado (se existir)
+      let price = currentModalItem.price;
+      if (currentModalItem.priceInput) {
+        const priceVal = parseFloat(modalEl.querySelector('#custom-price').value);
+        price = isNaN(priceVal) ? 0 : priceVal;
+      }
+      const newItem = {
+        id: currentModalItem.id,
+        name: currentModalItem.name,
+        price: price,
+        quantity: 1,
+        options: options,
+      };
+      if (currentEditIndex !== null && cart[currentEditIndex]) {
+        // Atualizar item existente preservando quantidade
+        const existingQty = cart[currentEditIndex].quantity;
+        newItem.quantity = existingQty;
+        cart[currentEditIndex] = newItem;
+      } else {
+        // Inserir novo item
+        cart.push(newItem);
+      }
+      saveToStorage();
+      updateCartBadge();
+      closeModal();
+    }
+
+    /**
+     * Renderiza a tela de carrinho com todos os itens selecionados e permite
+     * edição/removal. Atualiza subtotais, frete e total.
+     */
+    function renderCart() {
+      // Preencher observações gerais
+      document.getElementById('cart-observations').value = cartObservations;
+      const container = document.getElementById('cart-items');
+      container.innerHTML = '';
+      cart.forEach((item, index) => {
+        const div = document.createElement('div');
+        div.className = 'cart-item';
+        // Imagem
+        const img = document.createElement('div');
+        img.style.width = '64px';
+        img.style.height = '64px';
+        img.style.backgroundColor = 'var(--gray-medium)';
+        img.style.display = 'flex';
+        img.style.alignItems = 'center';
+        img.style.justifyContent = 'center';
+        img.style.color = 'var(--gray-light)';
+        img.style.fontSize = '1.5rem';
+        if (assets[item.id]) {
+          const imgtag = document.createElement('img');
+          imgtag.src = assets[item.id];
+          imgtag.alt = item.name;
+          imgtag.loading = 'lazy';
+          imgtag.style.width = '64px';
+          imgtag.style.height = '64px';
+          imgtag.style.objectFit = 'cover';
+          img.appendChild(imgtag);
+        } else {
+          // determinar emoji com base na categoria
+          let catEmoji = '🍔';
+          for (const cat of categories) {
+            if (cat.items.some(ci => ci.id === item.id)) {
+              catEmoji = cat.emoji || catEmoji;
+              break;
+            }
+          }
+          img.textContent = catEmoji;
+        }
+        div.appendChild(img);
+        // Detalhes
+        const details = document.createElement('div');
+        details.className = 'cart-item-details';
+        const title = document.createElement('div');
+        title.className = 'cart-item-title';
+        title.textContent = item.name;
+        details.appendChild(title);
+        // Opções
+        if (item.options) {
+          const opts = document.createElement('div');
+          opts.className = 'cart-item-options';
+          Object.keys(item.options).forEach(key => {
+            const val = item.options[key];
+            if (!val || key === 'observation') return;
+            let label;
+            switch (key) {
+              case 'protein':
+                label = 'Proteína';
+                break;
+              case 'ingredients':
+                label = 'Acompanhamentos';
+                break;
+              case 'blend':
+                label = 'Blend';
+                break;
+              case 'sauces':
+                label = 'Molhos';
+                break;
+              case 'extras':
+                label = 'Extras';
+                break;
+              case 'flavors':
+                label = 'Sabores';
+                break;
+              case 'toppings':
+                label = 'Toppings';
+                break;
+              case 'syrups':
+                label = 'Caldas';
+                break;
+              default:
+                // Capitalizar chave
+                label = key.charAt(0).toUpperCase() + key.slice(1);
+            }
+            const entry = document.createElement('div');
+            if (Array.isArray(val)) {
+              entry.textContent = `${label}: ${val.join(', ')}`;
+            } else {
+              entry.textContent = `${label}: ${val}`;
+            }
+            opts.appendChild(entry);
+          });
+          if (item.options.observation) {
+            const oSpan = document.createElement('div');
+            oSpan.textContent = 'Obs: ' + item.options.observation;
+            opts.appendChild(oSpan);
+          }
+          details.appendChild(opts);
+        }
+        // Preço unitário
+        const price = document.createElement('div');
+        price.textContent = formatCurrency(item.price);
+        price.style.color = 'var(--primary-yellow)';
+        details.appendChild(price);
+        div.appendChild(details);
+        // Ações (quantidade, editar, remover)
+        const actions = document.createElement('div');
+        actions.className = 'cart-item-actions';
+        // Quantidade
+        const qtyCtrl = document.createElement('div');
+        qtyCtrl.className = 'quantity-control';
+        const minusBtn = document.createElement('button');
+        minusBtn.textContent = '−';
+        minusBtn.addEventListener('click', () => {
+          if (cart[index].quantity > 1) {
+            cart[index].quantity--;
+          } else {
+            cart.splice(index, 1);
+          }
+          saveToStorage();
+          updateCartBadge();
+          renderCart();
+        });
+        qtyCtrl.appendChild(minusBtn);
+        const qtyDisplay = document.createElement('span');
+        qtyDisplay.textContent = item.quantity;
+        qtyCtrl.appendChild(qtyDisplay);
+        const plusBtn = document.createElement('button');
+        plusBtn.textContent = '+';
+        plusBtn.addEventListener('click', () => {
+          cart[index].quantity++;
+          saveToStorage();
+          updateCartBadge();
+          renderCart();
+        });
+        qtyCtrl.appendChild(plusBtn);
+        actions.appendChild(qtyCtrl);
+        // Editar
+        if (item.options) {
+          const editBtn = document.createElement('button');
+          editBtn.className = 'btn btn-secondary btn-small';
+          editBtn.textContent = 'Editar';
+          editBtn.addEventListener('click', () => {
+            // Abrir modal com dados existentes
+            const originalItem = categories.flatMap(c => c.items).find(ci => ci.id === item.id);
+            if (originalItem) {
+              openCustomizationModal(originalItem, index);
+            }
+          });
+          actions.appendChild(editBtn);
+        }
+        // Remover
+        const removeBtn = document.createElement('button');
+        removeBtn.className = 'btn btn-secondary btn-small';
+        removeBtn.textContent = 'Remover';
+        removeBtn.addEventListener('click', () => {
+          cart.splice(index, 1);
+          saveToStorage();
+          updateCartBadge();
+          renderCart();
+        });
+        actions.appendChild(removeBtn);
+        div.appendChild(actions);
+        container.appendChild(div);
+      });
+      // Totais
+      const totalsDiv = document.getElementById('cart-totals');
+      const subtotal = cart.reduce((sum, item) => sum + item.price * item.quantity, 0);
+      const freight = calculateFreight();
+      const total = subtotal + freight;
+      totalsDiv.innerHTML = '';
+      const rowSub = document.createElement('div');
+      rowSub.innerHTML = `<span>Subtotal</span><span>${formatCurrency(subtotal)}</span>`;
+      totalsDiv.appendChild(rowSub);
+      const rowFreight = document.createElement('div');
+      rowFreight.innerHTML = `<span>Frete</span><span>${formatCurrency(freight)}</span>`;
+      totalsDiv.appendChild(rowFreight);
+      const rowTotal = document.createElement('div');
+      rowTotal.className = 'total';
+      rowTotal.innerHTML = `<span>Total</span><span>${formatCurrency(total)}</span>`;
+      totalsDiv.appendChild(rowTotal);
+    }
+
+    /**
+     * Função utilitária para gerar um slug a partir de um nome. O slug é
+     * utilizado como identificador interno de itens e chaves de categoria.
+     * Remove caracteres especiais, converte espaços em hífens e aplica
+     * minúsculas. Se já existir um slug igual no escopo onde será usado,
+     * adiciona um número incremental para garantir unicidade.
+     *
+     * @param {string} name
+     * @param {Set<string>} existingSet
+     * @returns {string}
+     */
+    function generateSlug(name, existingSet) {
+      let slug = name
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[\u0300-\u036f]/g, '') // remove acentos
+        .replace(/[^a-z0-9]+/g, '-')
+        .replace(/(^-|-$)/g, '');
+      let originalSlug = slug;
+      let counter = 1;
+      while (existingSet.has(slug) || slug === '') {
+        slug = `${originalSlug}-${counter}`;
+        counter++;
+      }
+      return slug;
+    }
+
+    /**
+     * Renderiza o editor do cardápio. Cria dinamicamente campos de
+     * edição para cada categoria e seus itens, permitindo alterar
+     * nome, emoji, descrição, preço, flags e imagens. Também inclui
+     * botões para adicionar/remover categorias e itens.
+     */
+    function renderEditor() {
+      const container = document.getElementById('editor-content');
+      container.innerHTML = '';
+      categories.forEach((cat, ci) => {
+        const catDiv = document.createElement('div');
+        catDiv.style.backgroundColor = 'var(--gray-dark)';
+        catDiv.style.borderRadius = 'var(--radius-card)';
+        catDiv.style.padding = '1rem';
+        catDiv.style.marginBottom = '1rem';
+        catDiv.style.boxShadow = 'var(--shadow)';
+        // Título e remover categoria
+        const header = document.createElement('div');
+        header.style.display = 'flex';
+        header.style.justifyContent = 'space-between';
+        header.style.alignItems = 'center';
+        const h3 = document.createElement('h3');
+        h3.textContent = `Grupo ${ci+1}`;
+        header.appendChild(h3);
+        const delCatBtn = document.createElement('button');
+        delCatBtn.className = 'btn btn-secondary btn-small';
+        delCatBtn.textContent = 'Remover Grupo';
+        delCatBtn.addEventListener('click', () => {
+          if (confirm('Deseja remover este grupo e todos os itens?')) {
+            categories.splice(ci, 1);
+            saveCatalog();
+            renderEditor();
+            renderCategories();
+            renderProducts();
+          }
+        });
+        header.appendChild(delCatBtn);
+        catDiv.appendChild(header);
+        // Campos para editar nome e emoji da categoria
+        const nameGroup = document.createElement('div');
+        nameGroup.className = 'form-group';
+        const nameLabel = document.createElement('label');
+        nameLabel.textContent = 'Nome do Grupo';
+        nameGroup.appendChild(nameLabel);
+        const nameInput = document.createElement('input');
+        nameInput.type = 'text';
+        nameInput.value = cat.name;
+        nameInput.addEventListener('input', (e) => {
+          cat.name = e.target.value;
+          // Atualizar nav se estiver visível
+          renderCategories();
+        });
+        nameGroup.appendChild(nameInput);
+        catDiv.appendChild(nameGroup);
+        const emojiGroup = document.createElement('div');
+        emojiGroup.className = 'form-group';
+        const emojiLabel = document.createElement('label');
+        emojiLabel.textContent = 'Emoji';
+        emojiGroup.appendChild(emojiLabel);
+        const emojiInput = document.createElement('input');
+        emojiInput.type = 'text';
+        emojiInput.value = cat.emoji || '';
+        emojiInput.addEventListener('input', (e) => {
+          cat.emoji = e.target.value;
+          renderCategories();
+        });
+        emojiGroup.appendChild(emojiInput);
+        catDiv.appendChild(emojiGroup);
+        // Itens da categoria
+        const itemsWrapper = document.createElement('div');
+        itemsWrapper.style.marginTop = '0.5rem';
+        cat.items.forEach((item, ii) => {
+          const itemDiv = document.createElement('div');
+          itemDiv.style.backgroundColor = 'var(--gray-medium)';
+          itemDiv.style.borderRadius = 'var(--radius-input)';
+          itemDiv.style.padding = '0.8rem';
+          itemDiv.style.marginBottom = '0.8rem';
+          // Header item
+          const itemHeader = document.createElement('div');
+          itemHeader.style.display = 'flex';
+          itemHeader.style.justifyContent = 'space-between';
+          itemHeader.style.alignItems = 'center';
+          const itemTitle = document.createElement('strong');
+          itemTitle.textContent = `${ii+1}. ${item.name}`;
+          itemHeader.appendChild(itemTitle);
+          const delItemBtn = document.createElement('button');
+          delItemBtn.className = 'btn btn-secondary btn-small';
+          delItemBtn.textContent = 'Remover Item';
+          delItemBtn.addEventListener('click', () => {
+            if (confirm('Deseja remover este item?')) {
+              // Remover imagem associada
+              if (assets[item.id]) {
+                delete assets[item.id];
+              }
+              cat.items.splice(ii, 1);
+              saveCatalog();
+              renderEditor();
+              renderCategories();
+              renderProducts();
+            }
+          });
+          itemHeader.appendChild(delItemBtn);
+          itemDiv.appendChild(itemHeader);
+          // Nome do item
+          const itemNameGroup = document.createElement('div');
+          itemNameGroup.className = 'form-group';
+          const itemNameLabel = document.createElement('label');
+          itemNameLabel.textContent = 'Nome do Item';
+          itemNameGroup.appendChild(itemNameLabel);
+          const itemNameInput = document.createElement('input');
+          itemNameInput.type = 'text';
+          itemNameInput.value = item.name;
+          itemNameInput.addEventListener('input', (e) => {
+            item.name = e.target.value;
+            itemHeader.querySelector('strong').textContent = `${ii+1}. ${item.name}`;
+            renderProducts();
+          });
+          itemNameGroup.appendChild(itemNameInput);
+          itemDiv.appendChild(itemNameGroup);
+          // Descrição
+          const itemDescGroup = document.createElement('div');
+          itemDescGroup.className = 'form-group';
+          const itemDescLabel = document.createElement('label');
+          itemDescLabel.textContent = 'Descrição';
+          itemDescGroup.appendChild(itemDescLabel);
+          const itemDescInput = document.createElement('textarea');
+          itemDescInput.rows = 2;
+          itemDescInput.value = item.description || '';
+          itemDescInput.addEventListener('input', (e) => {
+            item.description = e.target.value;
+            renderProducts();
+          });
+          itemDescGroup.appendChild(itemDescInput);
+          itemDiv.appendChild(itemDescGroup);
+          // Preço
+          const priceGroup = document.createElement('div');
+          priceGroup.className = 'form-group';
+          const priceLabel = document.createElement('label');
+          priceLabel.textContent = 'Preço (R$)';
+          priceGroup.appendChild(priceLabel);
+          const priceInput = document.createElement('input');
+          priceInput.type = 'number';
+          priceInput.min = '0';
+          priceInput.step = '0.01';
+          priceInput.value = item.price;
+          priceInput.addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            item.price = isNaN(val) ? 0 : val;
+            renderProducts();
+            renderCart();
+          });
+          priceGroup.appendChild(priceInput);
+          itemDiv.appendChild(priceGroup);
+          // Flags de personalização e outras opções
+          const flagsGroup = document.createElement('div');
+          flagsGroup.style.display = 'flex';
+          flagsGroup.style.alignItems = 'center';
+          flagsGroup.style.flexWrap = 'wrap';
+          flagsGroup.style.gap = '1rem';
+          // customizável
+          const customLabel = document.createElement('label');
+          customLabel.style.display = 'flex';
+          customLabel.style.alignItems = 'center';
+          const customCheckbox = document.createElement('input');
+          customCheckbox.type = 'checkbox';
+          customCheckbox.checked = !!item.customizable;
+          customCheckbox.addEventListener('change', (e) => {
+            item.customizable = e.target.checked;
+            // Se tornar customizável e não possuir customOptions, garantir proteinLimit
+            if (item.customizable && !item.customOptions && item.proteinLimit === undefined) {
+              item.proteinLimit = 1;
+            }
+          });
+          customLabel.appendChild(customCheckbox);
+          customLabel.appendChild(document.createTextNode('Montagem'));
+          flagsGroup.appendChild(customLabel);
+          // priceInput
+          const priceInLabel = document.createElement('label');
+          priceInLabel.style.display = 'flex';
+          priceInLabel.style.alignItems = 'center';
+          const priceInCheckbox = document.createElement('input');
+          priceInCheckbox.type = 'checkbox';
+          priceInCheckbox.checked = !!item.priceInput;
+          priceInCheckbox.addEventListener('change', (e) => {
+            item.priceInput = e.target.checked;
+            renderProducts();
+          });
+          priceInLabel.appendChild(priceInCheckbox);
+          priceInLabel.appendChild(document.createTextNode('Preço a definir'));
+          flagsGroup.appendChild(priceInLabel);
+          // Disponibilidade do item
+          const availLabel = document.createElement('label');
+          availLabel.style.display = 'flex';
+          availLabel.style.alignItems = 'center';
+          const availCheckbox = document.createElement('input');
+          availCheckbox.type = 'checkbox';
+          availCheckbox.checked = item.available !== false;
+          availCheckbox.addEventListener('change', (e) => {
+            item.available = e.target.checked;
+            renderProducts();
+          });
+          availLabel.appendChild(availCheckbox);
+          availLabel.appendChild(document.createTextNode('Disponível'));
+          flagsGroup.appendChild(availLabel);
+          // Para itens com montagem via fallback (sem customOptions), permitir definir limite de proteínas
+          if (item.customizable && !Array.isArray(item.customOptions)) {
+            const proteinLimitLabel = document.createElement('label');
+            proteinLimitLabel.style.display = 'flex';
+            proteinLimitLabel.style.alignItems = 'center';
+            proteinLimitLabel.style.gap = '0.3rem';
+            const protInput = document.createElement('input');
+            protInput.type = 'number';
+            protInput.min = '1';
+            protInput.step = '1';
+            protInput.style.width = '60px';
+            protInput.value = item.proteinLimit || 1;
+            protInput.addEventListener('input', (e) => {
+              const val = parseInt(e.target.value, 10);
+              item.proteinLimit = (isNaN(val) || val < 1) ? 1 : val;
+            });
+            proteinLimitLabel.appendChild(document.createTextNode('Limite de proteínas'));
+            proteinLimitLabel.appendChild(protInput);
+            flagsGroup.appendChild(proteinLimitLabel);
+          }
+          itemDiv.appendChild(flagsGroup);
+          // Upload de imagem
+          const imgGroup = document.createElement('div');
+          imgGroup.className = 'form-group';
+          const imgLabel = document.createElement('label');
+          imgLabel.textContent = 'Imagem (PNG)';
+          imgGroup.appendChild(imgLabel);
+          const imgInput = document.createElement('input');
+          imgInput.type = 'file';
+          imgInput.accept = 'image/png';
+          imgInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = function(ev) {
+                assets[item.id] = ev.target.result;
+                saveCatalog();
+                renderProducts();
+              };
+              reader.readAsDataURL(file);
+            }
+          });
+          imgGroup.appendChild(imgInput);
+          // Mostrar status de imagem existente
+          if (assets[item.id]) {
+            const thumb = document.createElement('img');
+            thumb.src = assets[item.id];
+            thumb.style.width = '64px';
+            thumb.style.height = '64px';
+            thumb.style.objectFit = 'cover';
+            thumb.style.marginTop = '0.5rem';
+            imgGroup.appendChild(thumb);
+          }
+          itemDiv.appendChild(imgGroup);
+          itemsWrapper.appendChild(itemDiv);
+        });
+        catDiv.appendChild(itemsWrapper);
+        // Botão adicionar item
+        const addItemBtn = document.createElement('button');
+        addItemBtn.className = 'btn btn-secondary btn-small';
+        addItemBtn.textContent = 'Adicionar Item';
+        addItemBtn.addEventListener('click', () => {
+          const name = prompt('Nome do novo item:');
+          if (!name) return;
+          // Criar slug único considerando itens existentes
+          const existingIds = new Set(cat.items.map(it => it.id));
+          const slug = generateSlug(name, existingIds);
+          cat.items.push({ id: slug, name: name, description: '', price: 0 });
+          renderEditor();
+          renderCategories();
+          renderProducts();
+        });
+        catDiv.appendChild(addItemBtn);
+        container.appendChild(catDiv);
+      });
+
+      // --------- Editor de listas globais (proteínas, ingredientes, etc.) ---------
+      // Criar um contêiner para as listas globais
+      const globalContainer = document.createElement('div');
+      globalContainer.style.backgroundColor = 'var(--gray-dark)';
+      globalContainer.style.borderRadius = 'var(--radius-card)';
+      globalContainer.style.padding = '1rem';
+      globalContainer.style.boxShadow = 'var(--shadow)';
+      globalContainer.style.marginBottom = '1rem';
+      const globalTitle = document.createElement('h3');
+      globalTitle.textContent = 'Ingredientes e Opções Globais';
+      globalContainer.appendChild(globalTitle);
+      // Função auxiliar para renderizar uma lista
+      function renderOptionList(title, list, updateCallback) {
+        const section = document.createElement('div');
+        section.style.marginBottom = '1rem';
+        const h4 = document.createElement('h4');
+        h4.textContent = title;
+        section.appendChild(h4);
+        // Antes de iterar para gerar linhas, normalize todos os itens para
+        // garantir que list[i] seja um objeto com uma propriedade name.
+        for (let i = 0; i < list.length; i++) {
+          const item = list[i];
+          // Se for string ou valor falso, converter para objeto
+          if (typeof item !== 'object' || item === null) {
+            list[i] = { name: String(item), available: true };
+          } else {
+            // Se não tem name mas tem label, copiar
+            if (!('name' in item) && ('label' in item)) {
+              item.name = item.label;
+            }
+            // Se ainda não houver flag de disponibilidade, definir como true
+            if (item.available === undefined) {
+              item.available = true;
+            }
+            // Se o nome está vazio ou não definido, tente usar label ou value
+            if (!item.name || item.name.trim() === '') {
+              if (item.label && item.label.trim()) {
+                item.name = item.label.trim();
+              } else if (item.value && String(item.value).trim()) {
+                item.name = String(item.value).trim();
+              } else {
+                item.name = 'Opção';
+              }
+            }
+          }
+        }
+        // Agora iterar com a lista normalizada. Não usar o índice de
+        // forEach diretamente no callback do botão Remover porque a
+        // lista pode mudar enquanto iteramos; capturamos idx via closure.
+        list.forEach((opt, idx) => {
+          const row = document.createElement('div');
+          row.style.display = 'flex';
+          row.style.alignItems = 'center';
+          row.style.gap = '0.5rem';
+          row.style.marginBottom = '0.4rem';
+          // Nome (editável). Usamos um div contenteditable para evitar
+          // problemas de renderização observados em inputs sobre fundo escuro.
+          const nameDiv = document.createElement('div');
+          nameDiv.contentEditable = true;
+          nameDiv.textContent = opt.name || opt.label || opt.value || '';
+          nameDiv.style.flex = '1';
+          nameDiv.style.minHeight = '36px';
+          nameDiv.style.padding = '0.4rem 0.6rem';
+          const computedStyle = getComputedStyle(document.documentElement);
+          nameDiv.style.backgroundColor = computedStyle.getPropertyValue('--gray-medium') || '#232323';
+          nameDiv.style.color = computedStyle.getPropertyValue('--primary-white') || '#FFFFFF';
+          nameDiv.style.boxShadow = 'inset 0 0 0 1px var(--gray-light)';
+          nameDiv.style.borderRadius = getComputedStyle(document.documentElement).getPropertyValue('--radius-input') || '8px';
+          nameDiv.style.outline = 'none';
+          // Ao perder o foco, atualizar o nome no objeto
+          nameDiv.addEventListener('blur', () => {
+            const newVal = nameDiv.textContent.trim();
+            opt.name = newVal;
+            if (opt.label !== undefined) opt.label = newVal;
+            if (opt.value !== undefined && (opt.value === '' || opt.value === null)) {
+              opt.value = newVal;
+            }
+          });
+          row.appendChild(nameDiv);
+          // Disponibilidade
+          const avail = document.createElement('input');
+          avail.type = 'checkbox';
+          avail.checked = opt.available !== false;
+          avail.addEventListener('change', (e) => {
+            opt.available = e.target.checked;
+          });
+          row.appendChild(avail);
+          // Remover opção
+          const delBtn = document.createElement('button');
+          delBtn.className = 'btn btn-secondary btn-small';
+          delBtn.textContent = 'Remover';
+          delBtn.addEventListener('click', () => {
+            if (confirm('Deseja remover esta opção?')) {
+              list.splice(idx, 1);
+              renderEditor();
+            }
+          });
+          row.appendChild(delBtn);
+          section.appendChild(row);
+        });
+        // Botão para adicionar nova opção
+        const addBtn = document.createElement('button');
+        addBtn.className = 'btn btn-secondary btn-small';
+        addBtn.textContent = 'Adicionar';
+        addBtn.addEventListener('click', () => {
+          const name = prompt('Nome da nova opção:');
+          if (!name) return;
+          list.push({ name: name, available: true });
+          renderEditor();
+        });
+        section.appendChild(addBtn);
+        globalContainer.appendChild(section);
+      }
+      // Renderizar cada lista global
+      renderOptionList('Proteínas', proteins, () => {});
+      renderOptionList('Acompanhamentos', ingredients, () => {});
+      renderOptionList('Molhos Especiais', sauces, () => {});
+      renderOptionList('Extras para Hambúrgueres', extras, () => {});
+      renderOptionList('Sabores de Açaí', acaiFlavors, () => {});
+      renderOptionList('Sabores de Sorvete', iceCreamFlavors, () => {});
+      renderOptionList('Toppings', toppings, () => {});
+      // Adicionar lista de Caldas (syrups) para edição
+      renderOptionList('Caldas', syrups, () => {});
+      container.appendChild(globalContainer);
+    }
+
+    /**
+     * Adiciona um novo grupo ao catálogo. Pergunta o nome e gera uma key
+     * automática baseada no nome. Define emoji padrão como "🍽️".
+     */
+    function addCategory() {
+      const name = prompt('Nome do novo grupo:');
+      if (!name) return;
+      // Gerar slug único para chave
+      const existingKeys = new Set(categories.map(c => c.key));
+      const slug = generateSlug(name, existingKeys);
+      categories.push({ key: slug, name: name, emoji: '🍽️', items: [] });
+      renderEditor();
+      renderCategories();
+      renderProducts();
+    }
+
+    /**
+     * Monta a mensagem que será enviada via WhatsApp com todos os detalhes
+     * do pedido. Inclui dados do cliente, itens do carrinho, observações e
+     * identificador do pedido.
+     *
+     * @returns {string}
+     */
+    function buildWhatsAppMessage() {
+      let message = `*Palatarius - Pedido Online*`;
+      message += `\nCliente: ${customer.name} | Tel: ${customer.phone}`;
+      message += `\nEntrega/Retirada: ${customer.type}`;
+      if (customer.type === 'Entrega') {
+        const addr = customer.address;
+        const addrString = `${addr.logradouro}, ${addr.number}${addr.complement ? ' - ' + addr.complement : ''}, ${addr.bairro}, ${addr.marco}`;
+        message += `\nEndereço: ${addrString}`;
+        message += ` | KM: ${addr.km}`;
+        message += `\nFrete: ${formatCurrency(calculateFreight())}`;
+      } else {
+        message += `\nFrete: R$ 0,00`;
+      }
+      message += `\n\n*Itens:*`;
+      cart.forEach((item, idx) => {
+        message += `\n${idx+1}) ${item.name} x${item.quantity} — ${formatCurrency(item.price)}`;
+        if (item.options) {
+          Object.keys(item.options).forEach(key => {
+            const val = item.options[key];
+            if (!val || key === 'observation') return;
+            let label;
+            switch (key) {
+              case 'protein':
+                label = 'Proteína';
+                break;
+              case 'ingredients':
+                label = 'Acompanhamentos';
+                break;
+              case 'blend':
+                label = 'Blend';
+                break;
+              case 'sauces':
+                label = 'Molhos';
+                break;
+              case 'extras':
+                label = 'Extras';
+                break;
+              case 'flavors':
+                label = 'Sabores';
+                break;
+              case 'toppings':
+                label = 'Toppings';
+                break;
+              case 'syrups':
+                label = 'Caldas';
+                break;
+              default:
+                label = key.charAt(0).toUpperCase() + key.slice(1);
+            }
+            if (Array.isArray(val)) {
+              if (val.length) message += `\n   ${label}: ${val.join(', ')}`;
+            } else {
+              if (val) message += `\n   ${label}: ${val}`;
+            }
+          });
+          if (item.options.observation) {
+            message += `\n   Obs item: ${item.options.observation}`;
+          }
+        }
+      });
+      const subtotal = cart.reduce((sum, it) => sum + it.price * it.quantity, 0);
+      const freight = calculateFreight();
+      const total = subtotal + freight;
+      message += `\nSubtotal: ${formatCurrency(subtotal)}`;
+      message += `\nFrete: ${formatCurrency(freight)}`;
+      message += `\n*Total: ${formatCurrency(total)}*`;
+      if (cartObservations) {
+        message += `\n\nObs gerais: ${cartObservations}`;
+      }
+      message += `\n\nIdentificador: ${generateOrderId()}`;
+      return message;
+    }
+
+    /**
+     * Gera um cupom/recibo em uma nova janela para impressão em uma
+     * impressora térmica de 80 mm. O recibo contém todas as informações
+     * do pedido, incluindo dados do cliente, itens selecionados com suas
+     * personalizações, subtotal, frete e total. O conteúdo é gerado
+     * em HTML simples com fonte monoespaçada para facilitar a
+     * visualização em impressoras térmicas. Em seguida, abre uma nova
+     * janela, escreve o HTML e aciona a impressão.
+     */
+    function generateCoupon() {
+      // Certificar que há itens e dados do cliente válidos
+      if (!validateCustomerForm()) {
+        alert('Preencha corretamente os dados do cliente antes de gerar o cupom.');
+        return;
+      }
+      if (cart.length === 0) {
+        alert('Seu carrinho está vazio!');
+        return;
+      }
+      const now = new Date();
+      const dateStr = now.toLocaleDateString('pt-BR');
+      const timeStr = now.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      const orderId = generateOrderId();
+      // Construir linhas HTML para o recibo
+      const lines = [];
+      lines.push('<div style="width:80mm; font-family: monospace;">');
+      lines.push('<h3 style="text-align:center; margin:0;">Palatarius</h3>');
+      lines.push('<div style="text-align:center; margin-bottom:4px;">Pedido Online</div>');
+      lines.push(`<div>Data: ${dateStr} ${timeStr}</div>`);
+      lines.push(`<div>Cliente: ${customer.name}</div>`);
+      lines.push(`<div>Telefone: ${customer.phone}</div>`);
+      if (customer.type === 'Entrega') {
+        const addr = customer.address;
+        const addrString = `${addr.logradouro}, ${addr.number}${addr.complement ? ' - ' + addr.complement : ''}, ${addr.bairro}, ${addr.marco}`;
+        lines.push(`<div>Entrega: ${addrString}</div>`);
+        lines.push(`<div>KM: ${addr.km}</div>`);
+      } else {
+        lines.push('<div>Retirada no balcão</div>');
+      }
+      lines.push('<hr style="border-top:1px dashed #000; margin:4px 0;"/>');
+      lines.push('<div><strong>Itens:</strong></div>');
+      cart.forEach((item, idx) => {
+        lines.push(`<div>${idx + 1}) ${item.name} x${item.quantity} — ${formatCurrency(item.price)}</div>`);
+        if (item.options) {
+          Object.keys(item.options).forEach(key => {
+            const val = item.options[key];
+            if (!val || key === 'observation') return;
+            let label;
+            switch (key) {
+              case 'protein': label = 'Proteína'; break;
+              case 'ingredients': label = 'Acomp.'; break;
+              case 'blend': label = 'Blend'; break;
+              case 'sauces': label = 'Molhos'; break;
+              case 'extras': label = 'Extras'; break;
+              case 'flavors': label = 'Sabores'; break;
+              case 'toppings': label = 'Toppings'; break;
+              case 'syrups': label = 'Caldas'; break;
+              default: label = key;
+            }
+            if (Array.isArray(val) && val.length) {
+              lines.push(`<div style="margin-left:8px;">${label}: ${val.join(', ')}</div>`);
+            } else if (!Array.isArray(val) && val) {
+              lines.push(`<div style="margin-left:8px;">${label}: ${val}</div>`);
+            }
+          });
+          if (item.options.observation) {
+            lines.push(`<div style="margin-left:8px;">Obs: ${item.options.observation}</div>`);
+          }
+        }
+      });
+      const subtotal = cart.reduce((sum, it) => sum + it.price * it.quantity, 0);
+      const freight = calculateFreight();
+      const total = subtotal + freight;
+      lines.push('<hr style="border-top:1px dashed #000; margin:4px 0;"/>');
+      lines.push(`<div>Subtotal: ${formatCurrency(subtotal)}</div>`);
+      lines.push(`<div>Frete: ${formatCurrency(freight)}</div>`);
+      lines.push(`<div><strong>Total: ${formatCurrency(total)}</strong></div>`);
+      if (cartObservations) {
+        lines.push('<div style="margin-top:4px;"><em>Obs gerais:</em></div>');
+        lines.push(`<div>${cartObservations}</div>`);
+      }
+      lines.push('<hr style="border-top:1px dashed #000; margin:4px 0;"/>');
+      lines.push(`<div>Identificador: ${orderId}</div>`);
+      lines.push('</div>');
+      // Montar documento HTML completo para a nova janela
+      const html = `<!DOCTYPE html><html><head><meta charset="utf-8"><title>Recibo Palatarius</title>
+<style>body{margin:0;padding:4px;font-family: monospace;font-size:12px;} h3{margin:0;font-size:16px;}</style>
+</head><body>${lines.join('')}</body></html>`;
+      const printWindow = window.open('', '_blank');
+      if (!printWindow) {
+        alert('Não foi possível abrir a janela de impressão. Verifique se o navegador bloqueou pop-ups.');
+        return;
+      }
+      printWindow.document.write(html);
+      printWindow.document.close();
+      // Aguarda um pequeno intervalo para garantir que o conteúdo seja renderizado antes de imprimir
+      setTimeout(() => {
+        printWindow.focus();
+        printWindow.print();
+      }, 200);
+    }
+
+    /**
+     * Valida os dados da tela do cliente. Exibe mensagens de erro quando
+     * necessário e preenche o objeto customer. Retorna true se os dados
+     * estiverem válidos.
+     *
+     * @returns {boolean}
+     */
+    function validateCustomerForm() {
+      let valid = true;
+      const nameInput = document.getElementById('customer-name');
+      const phoneInput = document.getElementById('customer-phone');
+      const typeSelect = document.getElementById('order-type');
+      // Limpar erros
+      document.getElementById('error-name').textContent = '';
+      document.getElementById('error-phone').textContent = '';
+      document.getElementById('error-logradouro').textContent = '';
+      document.getElementById('error-number').textContent = '';
+      document.getElementById('error-bairro').textContent = '';
+      document.getElementById('error-freight').textContent = '';
+      // Nome
+      if (!nameInput.value.trim()) {
+        document.getElementById('error-name').textContent = 'Preencha o nome.';
+        valid = false;
+      }
+      // Telefone (10 a 11 dígitos)
+      const phoneVal = phoneInput.value.replace(/\D/g, '');
+      if (!/^[0-9]{10,11}$/.test(phoneVal)) {
+        document.getElementById('error-phone').textContent = 'Insira um telefone válido (10-11 dígitos).';
+        valid = false;
+      }
+      // Tipo
+      const typeVal = typeSelect.value;
+      // Se entrega, validar endereço
+      if (typeVal === 'Entrega') {
+        const logradouro = document.getElementById('address-logradouro').value.trim();
+        const number = document.getElementById('address-number').value.trim();
+        const bairro = document.getElementById('address-bairro').value.trim();
+        if (!logradouro) {
+          document.getElementById('error-logradouro').textContent = 'Preencha o logradouro.';
+          valid = false;
+        }
+        if (!number) {
+          document.getElementById('error-number').textContent = 'Preencha o número.';
+          valid = false;
+        }
+        if (!bairro) {
+          document.getElementById('error-bairro').textContent = 'Preencha o bairro.';
+          valid = false;
+        }
+        const kmVal = document.getElementById('address-km').value;
+        if (kmVal === 'Outro') {
+          const freightVal = document.getElementById('uber-freight').value;
+          if (!freightVal || parseFloat(freightVal) <= 0) {
+            document.getElementById('error-freight').textContent = 'Informe o valor do frete via Uber.';
+            valid = false;
+          }
+        }
+      }
+      // Atualizar objeto customer (se válido)
+      if (valid) {
+        customer.name = nameInput.value.trim();
+        customer.phone = phoneVal;
+        customer.type = typeVal;
+        if (typeVal === 'Entrega') {
+          customer.address.logradouro = document.getElementById('address-logradouro').value.trim();
+          customer.address.number = document.getElementById('address-number').value.trim();
+          customer.address.complement = document.getElementById('address-complement').value.trim();
+          customer.address.bairro = document.getElementById('address-bairro').value.trim();
+          customer.address.marco = document.getElementById('address-marco').value.trim();
+          customer.address.cidade = document.getElementById('address-cidade').value.trim();
+          customer.address.km = document.getElementById('address-km').value;
+          customer.address.freight = document.getElementById('uber-freight').value;
+        }
+        saveToStorage();
+      }
+      return valid;
+    }
+
+    // Event listeners
+    document.addEventListener('DOMContentLoaded', () => {
+      // Carregar dados do cardápio, cliente e carrinho
+      loadFromStorage();
+      renderCategories();
+      renderProducts();
+
+      // Determinar tela inicial com base no estado de login
+      const currentUserKey = localStorage.getItem('palatarius_current_user');
+      if (currentUserKey) {
+        // Usuário autenticado: mostrar cardápio e atualizar badge
+        showScreen('menu-screen');
+        updateCartBadge();
+      } else {
+        // Visitante: iniciar na tela de login
+        showScreen('login-screen');
+      }
+
+      // --------------------
+      // Eventos para formulários e interações comuns
+      // --------------------
+
+      // Evento: mudança no tipo de pedido (formulário legado)
+      const orderTypeEl = document.getElementById('order-type');
+      if (orderTypeEl) {
+        orderTypeEl.addEventListener('change', (e) => {
+          const type = e.target.value;
+          if (type === 'Entrega') {
+            document.getElementById('delivery-fields').style.display = 'block';
+          } else {
+            document.getElementById('delivery-fields').style.display = 'none';
+          }
+        });
+      }
+      // Evento: mudança no KM do formulário legado para exibir campo de frete manual
+      const kmEl = document.getElementById('address-km');
+      if (kmEl) {
+        kmEl.addEventListener('change', (e) => {
+          const km = e.target.value;
+          if (km === 'Outro') {
+            document.getElementById('uber-freight-group').style.display = 'block';
+          } else {
+            document.getElementById('uber-freight-group').style.display = 'none';
+          }
+        });
+      }
+      // Evento: pesquisa
+      const searchInput = document.getElementById('search-input');
+      if (searchInput) {
+        searchInput.addEventListener('input', () => {
+          renderProducts();
+        });
+      }
+      // Formulário de cliente (legado) – não utilizado mais por padrão,
+      // mas mantemos para eventual edição de dados. Ao enviar, apenas
+      // valida os dados e permanece no cardápio.
+      const customerForm = document.getElementById('customer-form');
+      if (customerForm) {
+        customerForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          if (validateCustomerForm()) {
+            showScreen('menu-screen');
+          }
+        });
+      }
+      // Badge do carrinho
+      const cartBadge = document.getElementById('cart-badge');
+      if (cartBadge) {
+        cartBadge.addEventListener('click', () => {
+          showScreen('cart-screen');
+        });
+      }
+      // Modal actions
+      document.getElementById('modal-cancel').addEventListener('click', () => {
+        closeModal();
+      });
+      document.getElementById('modal-save').addEventListener('click', () => {
+        saveModal();
+      });
+      // Observações gerais
+      document.getElementById('cart-observations').addEventListener('input', (e) => {
+        cartObservations = e.target.value;
+        saveToStorage();
+      });
+      // Botão WhatsApp
+      document.getElementById('checkout-whatsapp').addEventListener('click', () => {
+        // Revalidar dados do cliente antes de enviar
+        if (!validateCustomerForm()) {
+          alert('Preencha corretamente os dados do cliente antes de finalizar o pedido.');
+          return;
+        }
+        if (cart.length === 0) {
+          alert('Seu carrinho está vazio!');
+          return;
+        }
+        const message = buildWhatsAppMessage();
+        const encoded = encodeURIComponent(message);
+        const url = `https://wa.me/5521997599132?text=${encoded}`;
+        window.open(url, '_blank');
+      });
+      // Botão para gerar cupom/recibo
+      const printBtn = document.getElementById('print-coupon');
+      if (printBtn) {
+        printBtn.addEventListener('click', generateCoupon);
+      }
+
+      // --------------------
+      // Eventos para telas de login/registro
+      // --------------------
+      // Carregar usuários do armazenamento ou inicializar vazio
+      function loadUsers() {
+        try {
+          const u = JSON.parse(localStorage.getItem('palatarius_users'));
+          return u && typeof u === 'object' ? u : {};
+        } catch(e) {
+          return {};
+        }
+      }
+      function saveUsers(users) {
+        localStorage.setItem('palatarius_users', JSON.stringify(users));
+      }
+
+      // Handler para login
+      const loginForm = document.getElementById('login-form');
+      if (loginForm) {
+        loginForm.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const username = document.getElementById('login-username').value.trim();
+          const password = document.getElementById('login-password').value;
+          const users = loadUsers();
+          if (users[username] && users[username].password === password) {
+            // Usuário válido
+            localStorage.setItem('palatarius_current_user', username);
+            // Carregar dados do cliente deste usuário
+            customer = {};
+            if (users[username].customer) {
+              customer = JSON.parse(JSON.stringify(users[username].customer));
+            }
+            // Se não houver estrutura de endereço, criar
+            if (!customer.address) customer.address = {};
+            // Atualizar telas e salvar para sincronizar
+            saveToStorage();
+            renderCategories();
+            renderProducts();
+            updateCartBadge();
+            showScreen('menu-screen');
+          } else {
+            alert('Usuário ou senha inválidos.');
+          }
+        });
+      }
+      // Link para mostrar tela de cadastro
+      const showRegLink = document.getElementById('show-register');
+      if (showRegLink) {
+        showRegLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          // Limpar formulário de cadastro
+          document.getElementById('register-form').reset();
+          // Ajustar campos de entrega conforme o valor inicial do tipo de pedido
+          const initialType = document.getElementById('reg-order-type').value;
+          if (initialType === 'Entrega') {
+            document.getElementById('reg-delivery-fields').style.display = 'block';
+          } else {
+            document.getElementById('reg-delivery-fields').style.display = 'none';
+          }
+          // Ocultar campo de frete manual inicialmente
+          document.getElementById('reg-uber-freight-group').style.display = 'none';
+          showScreen('register-screen');
+        });
+      }
+      // Link para abrir a área do editor a partir da tela de login
+      const loginEditorLink = document.getElementById('login-editor-link');
+      if (loginEditorLink) {
+        loginEditorLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          const input = prompt('Digite a senha do editor:');
+          if (input === null) return;
+          if (input !== getEditorPassword()) {
+            alert('Senha incorreta.');
+            return;
+          }
+          // Copiar estado atual para backup
+          backupCategories = JSON.parse(JSON.stringify(categories));
+          backupAssets = JSON.parse(JSON.stringify(assets));
+          backupOptions = JSON.parse(JSON.stringify({
+            proteins: proteins,
+            ingredients: ingredients,
+            sauces: sauces,
+            extras: extras,
+            acaiFlavors: acaiFlavors,
+            iceCreamFlavors: iceCreamFlavors,
+            toppings: toppings,
+            syrups: syrups,
+          }));
+          renderEditor();
+          showScreen('editor-screen');
+        });
+      }
+      // Handler para cancelar cadastro
+      const registerCancelBtn = document.getElementById('register-cancel');
+      if (registerCancelBtn) {
+        registerCancelBtn.addEventListener('click', () => {
+          showScreen('login-screen');
+        });
+      }
+      // Handler para alteração de tipo de pedido no cadastro
+      const regOrderTypeEl = document.getElementById('reg-order-type');
+      if (regOrderTypeEl) {
+        regOrderTypeEl.addEventListener('change', (e) => {
+          const type = e.target.value;
+          if (type === 'Entrega') {
+            document.getElementById('reg-delivery-fields').style.display = 'block';
+          } else {
+            document.getElementById('reg-delivery-fields').style.display = 'none';
+          }
+        });
+      }
+      // Handler para alteração do KM no cadastro
+      const regKmEl = document.getElementById('reg-km');
+      if (regKmEl) {
+        regKmEl.addEventListener('change', (e) => {
+          const val = e.target.value;
+          if (val === 'Outro') {
+            document.getElementById('reg-uber-freight-group').style.display = 'block';
+          } else {
+            document.getElementById('reg-uber-freight-group').style.display = 'none';
+          }
+        });
+      }
+      // Handler para submissão do cadastro
+      const registerFormEl = document.getElementById('register-form');
+      if (registerFormEl) {
+        registerFormEl.addEventListener('submit', (e) => {
+          e.preventDefault();
+          const username = document.getElementById('reg-username').value.trim();
+          const password = document.getElementById('reg-password').value;
+          const nameVal = document.getElementById('reg-name').value.trim();
+          const phoneVal = document.getElementById('reg-phone').value.replace(/\D/g, '');
+          const typeVal = document.getElementById('reg-order-type').value;
+          // Validar campos obrigatórios do cadastro
+          let ok = true;
+          // reset erros
+          document.getElementById('error-reg-name').textContent = '';
+          document.getElementById('error-reg-phone').textContent = '';
+          document.getElementById('error-reg-logradouro').textContent = '';
+          document.getElementById('error-reg-number').textContent = '';
+          document.getElementById('error-reg-bairro').textContent = '';
+          document.getElementById('error-reg-freight').textContent = '';
+          if (!nameVal) {
+            document.getElementById('error-reg-name').textContent = 'Preencha o nome.';
+            ok = false;
+          }
+          if (!/^[0-9]{10,11}$/.test(phoneVal)) {
+            document.getElementById('error-reg-phone').textContent = 'Insira um telefone válido (10-11 dígitos).';
+            ok = false;
+          }
+          const users = loadUsers();
+          if (users[username]) {
+            alert('Usuário já existe. Escolha outro nome de usuário.');
+            return;
+          }
+          // Se entrega, validar endereço
+          let addressObj = {
+            cidade: 'Seropédica-RJ'
+          };
+          if (typeVal === 'Entrega') {
+            const log = document.getElementById('reg-logradouro').value.trim();
+            const num = document.getElementById('reg-number').value.trim();
+            const bairro = document.getElementById('reg-bairro').value.trim();
+            if (!log) {
+              document.getElementById('error-reg-logradouro').textContent = 'Preencha o logradouro.';
+              ok = false;
+            }
+            if (!num) {
+              document.getElementById('error-reg-number').textContent = 'Preencha o número.';
+              ok = false;
+            }
+            if (!bairro) {
+              document.getElementById('error-reg-bairro').textContent = 'Preencha o bairro.';
+              ok = false;
+            }
+            addressObj = {
+              logradouro: log,
+              number: num,
+              complement: document.getElementById('reg-complement').value.trim(),
+              bairro: bairro,
+              marco: document.getElementById('reg-marco').value.trim(),
+              cidade: document.getElementById('reg-cidade').value.trim(),
+              km: document.getElementById('reg-km').value,
+              freight: document.getElementById('reg-uber-freight').value
+            };
+            if (addressObj.km === 'Outro') {
+              if (!addressObj.freight || parseFloat(addressObj.freight) <= 0) {
+                document.getElementById('error-reg-freight').textContent = 'Informe o valor do frete via Uber.';
+                ok = false;
+              }
+            }
+          }
+          if (!ok) return;
+          // Criar objeto do cliente
+          const cust = {
+            name: nameVal,
+            phone: phoneVal,
+            type: typeVal,
+            address: addressObj
+          };
+          // Salvar usuário
+          users[username] = {
+            password: password,
+            customer: cust
+          };
+          saveUsers(users);
+          // Definir usuário atual e preencher dados globais
+          localStorage.setItem('palatarius_current_user', username);
+          customer = JSON.parse(JSON.stringify(cust));
+          // Limpar carrinho e observações para novo cadastro
+          cart = [];
+          cartObservations = '';
+          saveToStorage();
+          renderCategories();
+          renderProducts();
+          updateCartBadge();
+          showScreen('menu-screen');
+        });
+      }
+
+      // Copiar referências de backup para uso no editor. Devem ser
+      // declaradas fora dos handlers para serem acessíveis dentro deles.
+      var backupCategories;
+      var backupAssets;
+      var backupOptions;
+
+      // Botão para abrir o editor permanece oculto; as chamadas são feitas
+      // via link na tela de login. Porém, se for clicado (caso esteja
+      // visível), ainda funciona.
+      const openEditorBtn = document.getElementById('open-editor');
+      if (openEditorBtn) {
+        openEditorBtn.addEventListener('click', () => {
+          const input = prompt('Digite a senha do editor:');
+          if (input === null) return;
+          if (input !== getEditorPassword()) {
+            alert('Senha incorreta.');
+            return;
+          }
+          backupCategories = JSON.parse(JSON.stringify(categories));
+          backupAssets = JSON.parse(JSON.stringify(assets));
+          backupOptions = JSON.parse(JSON.stringify({
+            proteins: proteins,
+            ingredients: ingredients,
+            sauces: sauces,
+            extras: extras,
+            acaiFlavors: acaiFlavors,
+            iceCreamFlavors: iceCreamFlavors,
+            toppings: toppings,
+            syrups: syrups,
+          }));
+          renderEditor();
+          showScreen('editor-screen');
+        });
+      }
+      // Botão para adicionar um novo grupo no editor
+      const editorAddCategoryBtn = document.getElementById('editor-add-category');
+      if (editorAddCategoryBtn) {
+        editorAddCategoryBtn.addEventListener('click', () => {
+          addCategory();
+        });
+      }
+      // Botão para cancelar edição
+      const editorCancelBtn = document.getElementById('editor-cancel');
+      if (editorCancelBtn) {
+        editorCancelBtn.addEventListener('click', () => {
+          // Restaurar o estado anterior caso tenha backup
+          if (backupCategories) {
+            categories = JSON.parse(JSON.stringify(backupCategories));
+          }
+          if (backupAssets) {
+            assets = JSON.parse(JSON.stringify(backupAssets));
+          }
+          if (backupOptions) {
+            proteins = JSON.parse(JSON.stringify(backupOptions.proteins));
+            ingredients = JSON.parse(JSON.stringify(backupOptions.ingredients));
+            sauces = JSON.parse(JSON.stringify(backupOptions.sauces));
+            extras = JSON.parse(JSON.stringify(backupOptions.extras));
+            acaiFlavors = JSON.parse(JSON.stringify(backupOptions.acaiFlavors));
+            iceCreamFlavors = JSON.parse(JSON.stringify(backupOptions.iceCreamFlavors));
+            toppings = JSON.parse(JSON.stringify(backupOptions.toppings));
+            if (backupOptions.syrups) {
+              syrups = JSON.parse(JSON.stringify(backupOptions.syrups));
+            }
+          }
+          showScreen('menu-screen');
+          renderCategories();
+          renderProducts();
+        });
+      }
+      // Botão para salvar alterações no editor
+      const editorSaveBtn = document.getElementById('editor-save');
+      if (editorSaveBtn) {
+        editorSaveBtn.addEventListener('click', () => {
+          if (categories.length === 0) {
+            alert('Crie ao menos um grupo antes de salvar.');
+            return;
+          }
+          if (!categories.find(c => c.key === activeCategory)) {
+            activeCategory = categories[0].key;
+          }
+          saveCatalog();
+          renderCategories();
+          renderProducts();
+          showScreen('menu-screen');
+        });
+      }
+      // Botão para voltar ao cardápio a partir do carrinho
+      const backToMenuBtn = document.getElementById('back-to-menu');
+      if (backToMenuBtn) {
+        backToMenuBtn.addEventListener('click', () => {
+          showScreen('menu-screen');
+        });
+      }
+    });
+  </script>
+</body>
+</html>
