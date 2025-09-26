@@ -423,10 +423,10 @@
     </button>
   </header>
 
-  <!-- Tela de Login: exibe campos para usuário e senha. Inclui links para
-       cadastro e área de edição. Esta tela é exibida por padrão para
-       visitantes que ainda não efetuaram login. -->
-  <section id="login-screen" class="active">
+  <!-- Tela de Login removida: substituída pelo formulário de dados do cliente
+       diretamente. Esta seção permanece no documento apenas como referência,
+       mas não é exibida. -->
+  <section id="login-screen" style="display:none;">
     <h2>Entrar</h2>
     <form id="login-form">
       <div class="form-group">
@@ -447,10 +447,10 @@
     </p>
   </section>
 
-  <!-- Tela de Registro: permite ao novo cliente criar um usuário e preencher seus
-       dados (nome, telefone, endereço, etc.). Após o cadastro, o usuário
-       é redirecionado diretamente para o cardápio. -->
-  <section id="register-screen">
+  <!-- Tela de Registro removida: toda a coleta de dados do cliente é feita
+       através de customer-screen. Esta seção é mantida escondida para
+       compatibilidade, mas não é utilizada. -->
+  <section id="register-screen" style="display:none;">
     <h2>Cadastro</h2>
     <form id="register-form">
       <!-- Campos de login -->
@@ -535,7 +535,7 @@
   <!-- Tela de dados do cliente (não utilizada inicialmente). Permanecemos
        com esta tela no documento para eventual edição de dados, mas ela
        não é exibida por padrão. -->
-  <section id="customer-screen">
+  <section id="customer-screen" class="active">
     <h2>Dados do Cliente</h2>
     <form id="customer-form">
       <div class="form-group">
@@ -603,6 +603,13 @@
         </div>
       </div>
       <button type="submit" class="btn btn-primary" id="continue-menu">Continuar para o Cardápio</button>
+      <!-- Link para acessar a área de edição (Editor) diretamente a partir
+           da tela de dados do cliente. O editor permanece protegido por
+           senha e o link abre um prompt solicitando a senha antes de
+           liberar a edição do cardápio. -->
+      <p style="margin-top:1rem;">
+        <a href="#" id="customer-editor-link">Área do Editor</a>
+      </p>
     </form>
   </section>
 
@@ -610,10 +617,6 @@
   <section id="menu-screen">
     <div class="search-group" style="margin-bottom: 1rem;">
       <input type="text" id="search-input" placeholder="Buscar item..." />
-    </div>
-    <!-- Botão de sair para voltar à tela de login -->
-    <div class="logout-group" style="margin-bottom: 1rem; text-align: right;">
-      <button class="btn btn-secondary" id="logout-btn">Sair</button>
     </div>
     <nav class="category-nav" id="category-nav"></nav>
     <div id="product-list"></div>
@@ -1374,23 +1377,14 @@
      */
     function loadFromStorage() {
       try {
-        // Determinar se há um usuário logado. Se existir, carregar suas
-        // informações de cliente em vez do backup genérico.
-        const currentUserKey = localStorage.getItem('palatarius_current_user');
-        if (currentUserKey) {
-          try {
-            const usersStore = JSON.parse(localStorage.getItem('palatarius_users')) || {};
-            if (usersStore[currentUserKey] && usersStore[currentUserKey].customer) {
-              customer = JSON.parse(JSON.stringify(usersStore[currentUserKey].customer));
-            }
-          } catch(e) {
-            // falha ao carregar usuários; ignorar
-          }
-        } else {
-          const storedCustomer = localStorage.getItem('palatarius_customer');
-          if (storedCustomer) {
-            customer = JSON.parse(storedCustomer);
-          }
+        // Carregar dados salvos do cliente a partir do localStorage. Não há
+        // sistema de usuários, portanto sempre lemos a chave palatarius_customer
+        // e ignoramos palatarius_current_user ou palatarius_users.
+        const storedCustomer = localStorage.getItem('palatarius_customer');
+        if (storedCustomer) {
+          customer = JSON.parse(storedCustomer);
+          // Garantir que o objeto de endereço exista
+          if (!customer.address) customer.address = {};
         }
         const storedCart = localStorage.getItem('palatarius_cart');
         if (storedCart) {
@@ -1570,19 +1564,8 @@
       // Salvar catálogo e imagens também
       saveCatalog();
 
-      // Se houver um usuário logado, persistir seus dados
-      const currentUserKey = localStorage.getItem('palatarius_current_user');
-      if (currentUserKey) {
-        try {
-          const usersStore = JSON.parse(localStorage.getItem('palatarius_users')) || {};
-          if (usersStore[currentUserKey]) {
-            usersStore[currentUserKey].customer = customer;
-            localStorage.setItem('palatarius_users', JSON.stringify(usersStore));
-          }
-        } catch (ex) {
-          // ignorar erros de parse
-        }
-      }
+      // Não há sistema de usuários global. O cliente é armazenado apenas na chave
+      // palatarius_customer acima; não persistimos dados em palatarius_users.
     }
 
     /**
@@ -3049,15 +3032,14 @@
       renderCategories();
       renderProducts();
 
-      // Determinar tela inicial com base no estado de login
-      const currentUserKey = localStorage.getItem('palatarius_current_user');
-      if (currentUserKey) {
-        // Usuário autenticado: mostrar cardápio e atualizar badge
+      // Determinar tela inicial com base nos dados do cliente.
+      // Se houver dados salvos de cliente (palatarius_customer), seguir direto
+      // para o cardápio. Caso contrário, iniciar no formulário de dados do cliente.
+      if (customer && customer.name) {
         showScreen('menu-screen');
         updateCartBadge();
       } else {
-        // Visitante: iniciar na tela de login
-        showScreen('login-screen');
+        showScreen('customer-screen');
       }
 
       // --------------------
@@ -3216,6 +3198,35 @@
       const loginEditorLink = document.getElementById('login-editor-link');
       if (loginEditorLink) {
         loginEditorLink.addEventListener('click', (e) => {
+          e.preventDefault();
+          const input = prompt('Digite a senha do editor:');
+          if (input === null) return;
+          if (input !== getEditorPassword()) {
+            alert('Senha incorreta.');
+            return;
+          }
+          // Copiar estado atual para backup
+          backupCategories = JSON.parse(JSON.stringify(categories));
+          backupAssets = JSON.parse(JSON.stringify(assets));
+          backupOptions = JSON.parse(JSON.stringify({
+            proteins: proteins,
+            ingredients: ingredients,
+            sauces: sauces,
+            extras: extras,
+            acaiFlavors: acaiFlavors,
+            iceCreamFlavors: iceCreamFlavors,
+            toppings: toppings,
+            syrups: syrups,
+          }));
+          renderEditor();
+          showScreen('editor-screen');
+        });
+      }
+
+      // Link para abrir a área do editor a partir da tela de dados do cliente
+      const customerEditorLink = document.getElementById('customer-editor-link');
+      if (customerEditorLink) {
+        customerEditorLink.addEventListener('click', (e) => {
           e.preventDefault();
           const input = prompt('Digite a senha do editor:');
           if (input === null) return;
@@ -3459,23 +3470,6 @@
       if (backToMenuBtn) {
         backToMenuBtn.addEventListener('click', () => {
           showScreen('menu-screen');
-        });
-      }
-
-      // Botão de sair do cardápio para retornar à tela de login
-      const logoutBtn = document.getElementById('logout-btn');
-      if (logoutBtn) {
-        logoutBtn.addEventListener('click', () => {
-          // Remover usuário atual do armazenamento
-          localStorage.removeItem('palatarius_current_user');
-          // Limpar dados do cliente e carrinho
-          customer = {};
-          cart = [];
-          cartObservations = '';
-          saveToStorage();
-          updateCartBadge();
-          // Voltar para a tela de login
-          showScreen('login-screen');
         });
       }
     });
