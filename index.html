@@ -423,9 +423,8 @@
     </button>
   </header>
 
-  <!-- Tela de Login removida: substituída pelo formulário de dados do cliente
-       diretamente. Esta seção permanece no documento apenas como referência,
-       mas não é exibida. -->
+  <!-- Tela de Login: a autenticação por usuário/senha foi removida. Esta
+       seção permanece apenas para referência e não é exibida. -->
   <section id="login-screen" style="display:none;">
     <h2>Entrar</h2>
     <form id="login-form">
@@ -447,9 +446,8 @@
     </p>
   </section>
 
-  <!-- Tela de Registro removida: toda a coleta de dados do cliente é feita
-       através de customer-screen. Esta seção é mantida escondida para
-       compatibilidade, mas não é utilizada. -->
+  <!-- Tela de Registro removida. Os dados do cliente são preenchidos diretamente
+       na tela de dados do cliente (customer-screen). Esta seção fica oculta. -->
   <section id="register-screen" style="display:none;">
     <h2>Cadastro</h2>
     <form id="register-form">
@@ -532,9 +530,9 @@
     </form>
   </section>
 
-  <!-- Tela de dados do cliente (não utilizada inicialmente). Permanecemos
-       com esta tela no documento para eventual edição de dados, mas ela
-       não é exibida por padrão. -->
+  <!-- Tela de dados do cliente. Esta tela é exibida inicialmente para que
+       o cliente informe seu nome, telefone e endereço (quando for entrega).
+       Após validação, o usuário prossegue para o cardápio. -->
   <section id="customer-screen" class="active">
     <h2>Dados do Cliente</h2>
     <form id="customer-form">
@@ -603,14 +601,11 @@
         </div>
       </div>
       <button type="submit" class="btn btn-primary" id="continue-menu">Continuar para o Cardápio</button>
-      <!-- Link para acessar a área de edição (Editor) diretamente a partir
-           da tela de dados do cliente. O editor permanece protegido por
-           senha e o link abre um prompt solicitando a senha antes de
-           liberar a edição do cardápio. -->
-      <p style="margin-top:1rem;">
-        <a href="#" id="customer-editor-link">Área do Editor</a>
-      </p>
     </form>
+    <!-- Link para acessar a área do editor diretamente. O editor permanece protegido por senha -->
+    <p style="margin-top:1rem;">
+      <a href="#" id="customer-editor-link">Área do Editor</a>
+    </p>
   </section>
 
   <!-- Tela 2: Cardápio -->
@@ -1377,15 +1372,16 @@
      */
     function loadFromStorage() {
       try {
-        // Carregar dados salvos do cliente a partir do localStorage. Não há
-        // sistema de usuários, portanto sempre lemos a chave palatarius_customer
-        // e ignoramos palatarius_current_user ou palatarius_users.
+        // Carregar dados de cliente salvos na chave palatarius_customer. Não há
+        // sistema de usuários global, portanto ignoramos palatarius_current_user
+        // e palatarius_users. Caso existam dados salvos, clonamos para a
+        // variável customer; caso contrário, inicializamos com estruturas vazias.
         const storedCustomer = localStorage.getItem('palatarius_customer');
         if (storedCustomer) {
           customer = JSON.parse(storedCustomer);
-          // Garantir que o objeto de endereço exista
-          if (!customer.address) customer.address = {};
         }
+        // Garantir que existam objetos base
+        if (!customer.address) customer.address = {};
         const storedCart = localStorage.getItem('palatarius_cart');
         if (storedCart) {
           cart = JSON.parse(storedCart);
@@ -1564,8 +1560,7 @@
       // Salvar catálogo e imagens também
       saveCatalog();
 
-      // Não há sistema de usuários global. O cliente é armazenado apenas na chave
-      // palatarius_customer acima; não persistimos dados em palatarius_users.
+      // Não persiste dados em usuários: não existe sistema de autenticação.
     }
 
     /**
@@ -3033,8 +3028,9 @@
       renderProducts();
 
       // Determinar tela inicial com base nos dados do cliente.
-      // Se houver dados salvos de cliente (palatarius_customer), seguir direto
-      // para o cardápio. Caso contrário, iniciar no formulário de dados do cliente.
+      // Se houver dados de cliente (nome preenchido), seguir direto ao cardápio
+      // e atualizar o badge do carrinho. Caso contrário, mostrar a tela de
+      // cadastro de cliente.
       if (customer && customer.name) {
         showScreen('menu-screen');
         updateCartBadge();
